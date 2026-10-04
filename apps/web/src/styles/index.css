@@ -1,0 +1,246 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import './tokens/planta.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  /* ≥ 900px: sidebar + header actions; below: top bar + bottom nav with the FAB. */
+  --breakpoint-desk: 56.25rem;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-steel: var(--steel);
+  --color-steel-100: var(--steel-100);
+  --color-steel-200: var(--steel-200);
+  --color-steel-300: var(--steel-300);
+  --color-steel-400: var(--steel-400);
+  --color-steel-500: var(--steel-500);
+  --color-steel-600: var(--steel-600);
+  --color-steel-700: var(--steel-700);
+  --color-steel-800: var(--steel-800);
+  --color-steel-900: var(--steel-900);
+  --color-graphite-100: var(--graphite-100);
+  --color-graphite-200: var(--graphite-200);
+  --color-graphite-300: var(--graphite-300);
+  --color-graphite-500: var(--graphite-500);
+  --color-graphite-700: var(--graphite-700);
+  --color-graphite-900: var(--graphite-900);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-emphasis: var(--emphasis);
+  --color-emphasis-foreground: var(--emphasis-foreground);
+  --color-emphasis-muted: var(--emphasis-muted);
+
+  --font-sans: var(--typeface-ui);
+  --font-display: var(--typeface-display);
+  --font-numeric: var(--typeface-numeric);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+
+  --shadow-card: var(--elevation-1);
+  --shadow-raised: var(--elevation-2);
+  --shadow-overlay: var(--elevation-3);
+
+  /* Motion: quick, precise, no bounce — a technical drawing, not a toy. */
+  --ease-out-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-page-in: page-in 220ms var(--ease-out-soft) both;
+  --animate-rise-in: rise-in 220ms var(--ease-out-soft) both;
+  --animate-grow-x: grow-x 480ms var(--ease-out-soft) both;
+  --animate-grow-y: grow-y 480ms var(--ease-out-soft) both;
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+  @keyframes grow-x {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes grow-y {
+    from {
+      transform: scaleY(0);
+    }
+  }
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--typeface-ui);
+    font-size: 15px;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    font-family: var(--typeface-display);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    line-height: 1.12;
+  }
+
+  /* Lucide at 1.5 everywhere: the lighter, technical stroke of the system. */
+  svg.lucide {
+    stroke-width: 1.5;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--steel) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+  }
+
+  /* Every amount of money: aligned digits, lining figures. */
+  .font-money {
+    font-family: var(--typeface-numeric);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* 10–11px uppercase labels ("kicker", table heads, nav groups). */
+  .kicker {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/*
+ * Blueprint registration marks: four "+" crosshairs centred on the corners of the element's
+ * border (the Industry system's .corner marks), drawn with background lines on ::after so no
+ * extra markup is needed. Pair it with `border` for the hairline frame. The element must not
+ * clip (overflow: hidden/auto) or the marks are cut — wrap scroll areas instead.
+ */
+@utility blueprint {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    pointer-events: none;
+    --m: var(--mark);
+    background:
+      linear-gradient(var(--m), var(--m)) left 5px top 0 / 1px 11px no-repeat,
+      linear-gradient(var(--m), var(--m)) left 0 top 5px / 11px 1px no-repeat,
+      linear-gradient(var(--m), var(--m)) right 5px top 0 / 1px 11px no-repeat,
+      linear-gradient(var(--m), var(--m)) right 0 top 5px / 11px 1px no-repeat,
+      linear-gradient(var(--m), var(--m)) left 5px bottom 0 / 1px 11px no-repeat,
+      linear-gradient(var(--m), var(--m)) left 0 bottom 5px / 11px 1px no-repeat,
+      linear-gradient(var(--m), var(--m)) right 5px bottom 0 / 1px 11px no-repeat,
+      linear-gradient(var(--m), var(--m)) right 0 bottom 5px / 11px 1px no-repeat;
+  }
+}
+
+/* Zero specificity, below utilities: `fixed` / `absolute` / `sticky` still win. */
+@layer base {
+  :where(.blueprint) {
+    position: relative;
+  }
+}

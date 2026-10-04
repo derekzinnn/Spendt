@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Libraries like react-router import "react" types without declaring @types/react;
+# hoisting @types/* lets TypeScript find them from inside the isolated store.
+publicHoistPattern:
+  - '@types/*'
+
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+minimumReleaseAgeExclude:
+  - eslint@10.12.0
+  - pino@10.4.0
+  - lucide-react@1.51.0

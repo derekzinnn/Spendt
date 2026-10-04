@@ -1,0 +1,403 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Spendly — domain model
+//
+// Conventions (see CLAUDE.md → "Domain rules"):
+//  • Money is always an integer number of cents (Int). R$ 1.234,56 → 123456.
+//  • Business dates (purchase, due, closing…) are calendar dates: @db.Date, no time,
+//    no timezone. The app computes them in America/Sao_Paulo at entry time.
+//  • Instants (createdAt, expiresAt…) are timestamptz.
+//  • Every business table carries householdId and every query is scoped by it.
+//  • Derived numbers are never stored: account balances, invoice totals and invoice
+//    status are computed from transactions.
+//  • Invariants Prisma cannot express live as CHECK constraints in the migrations.
+//  • Money belongs to the couple: there are no per-person splits or debts between
+//    members. `paidById` only records who paid, as information.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Enums (mirrored in @spendly/shared/enums.ts) ─────────────
+
+enum HouseholdRole {
+  OWNER
+  MEMBER
+}
+
+enum CategoryKind {
+  EXPENSE
+  INCOME
+}
+
+enum AccountType {
+  CHECKING // conta corrente
+  SAVINGS // poupança / reserva
+  CASH // carteira / dinheiro
+  BENEFIT // VR / VA
+}
+
+enum CardBrand {
+  VISA
+  MASTERCARD
+  ELO
+  AMEX
+  HIPERCARD
+  OTHER
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PAID
+  PENDING
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// ───────────── Identity & household ─────────────
+
+/// A login identity. Knows nothing about money; money belongs to households.
+model User {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  email        String   @unique /// stored lowercase
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  memberships HouseholdMember[]
+  sessions    Session[]
+}
+
+/// Server-side session behind an httpOnly cookie. Revocable, unlike a bare JWT.
+model Session {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  tokenHash         String   @unique /// SHA-256 of the cookie value; the raw token never touches the DB
+  userId            String   @db.Uuid
+  activeHouseholdId String?  @db.Uuid
+  expiresAt         DateTime @db.Timestamptz(3)
+  lastSeenAt        DateTime @default(now()) @db.Timestamptz(3)
+  userAgent         String?
+  ipAddress         String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeHousehold Household? @relation(fields: [activeHouseholdId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// The tenant boundary. Every business row points here.
+model Household {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  currency  String   @default("BRL") @db.Char(3)
+  timezone  String   @default("America/Sao_Paulo")
+  locale    String   @default("pt-BR")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  members          HouseholdMember[]
+  invites          HouseholdInvite[]
+  sessions         Session[]
+  categories       Category[]
+  accounts         Account[]
+  creditCards      CreditCard[]
+  invoices         Invoice[]
+  transactions     Transaction[]
+  installmentPlans InstallmentPlan[]
+  recurringRules   RecurringRule[]
+  tags             Tag[]
+}
+
+/// A user *inside* a household. Money references members (not users), so history
+/// survives someone joining another household or leaving this one.
+model HouseholdMember {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  householdId String        @db.Uuid
+  userId      String        @db.Uuid
+  role        HouseholdRole @default(MEMBER)
+  displayName String /// how the household calls this person ("Derek", "Bia")
+  color       String /// palette key (see @spendly/shared PALETTE_KEYS)
+  joinedAt    DateTime      @default(now()) @db.Timestamptz(3)
+  leftAt      DateTime?     @db.Timestamptz(3)
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  invitesSent         HouseholdInvite[]
+  heldAccounts        Account[]
+  heldCards           CreditCard[]
+  paidTransactions    Transaction[]     @relation("TransactionPaidBy")
+  createdTransactions Transaction[]     @relation("TransactionCreatedBy")
+  recurringRules      RecurringRule[]
+
+  @@unique([householdId, userId])
+}
+
+/// One-time invite link (the token is only ever sent to the invitee; we keep its hash).
+model HouseholdInvite {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  householdId String        @db.Uuid
+  email       String
+  role        HouseholdRole @default(MEMBER)
+  tokenHash   String        @unique
+  invitedById String        @db.Uuid
+  expiresAt   DateTime      @db.Timestamptz(3)
+  acceptedAt  DateTime?     @db.Timestamptz(3)
+  revokedAt   DateTime?     @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+
+  household Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  invitedBy HouseholdMember @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
+}
+
+// ───────────── Structure ─────────────
+
+/// Expense or income category. One level of subcategories (enforced by the app).
+/// Archived instead of deleted, so history never has holes.
+model Category {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  householdId        String       @db.Uuid
+  parentId           String?      @db.Uuid
+  name               String
+  kind               CategoryKind
+  icon               String /// icon key (see @spendly/shared CATEGORY_ICON_KEYS)
+  color              String /// palette key
+  monthlyBudgetCents Int?
+  sortOrder          Int          @default(0)
+  archivedAt         DateTime?    @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  household Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: NoAction)
+  children  Category[] @relation("CategoryTree")
+
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+
+  @@index([householdId, kind])
+  @@index([parentId])
+}
+
+/// Checking, savings, cash, VR/VA. The current balance is ALWAYS derived:
+/// initialBalanceCents + PAID movements dated on/after initialBalanceDate.
+model Account {
+  id                  String      @id @default(uuid(7)) @db.Uuid
+  householdId         String      @db.Uuid
+  holderId            String?     @db.Uuid /// null = joint account
+  name                String
+  type                AccountType
+  color               String /// palette key
+  initialBalanceCents Int         @default(0)
+  initialBalanceDate  DateTime    @db.Date
+  archivedAt          DateTime?   @db.Timestamptz(3)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+
+  household Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  holder    HouseholdMember? @relation(fields: [holderId], references: [id], onDelete: NoAction)
+
+  transactions      Transaction[]   @relation("TransactionAccount")
+  incomingTransfers Transaction[]   @relation("TransactionToAccount")
+  cardsPaidFromHere CreditCard[]
+  recurringRules    RecurringRule[]
+
+  @@index([householdId])
+}
+
+/// Credit card. Invoices are generated from closingDay/dueDay (see CLAUDE.md →
+/// "Invoice assignment rule").
+model CreditCard {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  householdId      String    @db.Uuid
+  holderId         String?   @db.Uuid /// null = shared card
+  paymentAccountId String?   @db.Uuid /// default account used to pay invoices
+  name             String
+  brand            CardBrand @default(OTHER)
+  color            String /// palette key
+  lastFour         String?   @db.Char(4)
+  limitCents       Int
+  closingDay       Int /// 1–31, clamped to month length; purchases ON this day go to the NEXT invoice
+  dueDay           Int /// 1–31, clamped to month length
+  archivedAt       DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  household      Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  holder         HouseholdMember? @relation(fields: [holderId], references: [id], onDelete: NoAction)
+  paymentAccount Account?         @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+
+  invoices       Invoice[]
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+
+  @@index([householdId])
+}
+
+/// One invoice per card per cycle. Its dates are a SNAPSHOT taken at creation, so
+/// changing the card's closing day never rewrites history. Total and status
+/// (open → closed → paid / partially paid / overdue) are derived, never stored.
+model Invoice {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  householdId    String   @db.Uuid
+  creditCardId   String   @db.Uuid
+  referenceMonth DateTime @db.Date /// 1st day of the DUE month: 2026-11-01 = "fatura de novembro"
+  periodStart    DateTime @db.Date /// first purchase date included (inclusive)
+  closingDate    DateTime @db.Date /// purchases on/after this date roll to the next invoice (exclusive)
+  dueDate        DateTime @db.Date
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  creditCard   CreditCard    @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([creditCardId, referenceMonth])
+  @@index([householdId, dueDate])
+}
+
+// ───────────── The ledger ─────────────
+
+/// Every money movement is one row:
+///  • EXPENSE / INCOME on an account   → accountId
+///  • EXPENSE / INCOME on a card       → creditCardId + invoiceId
+///  • TRANSFER between accounts        → accountId (from) + toAccountId (to)
+///  • invoice payment (TRANSFER)       → accountId (from) + creditCardId + invoiceId
+/// A pending row with a dueDate is a bill ("contas a pagar").
+model Transaction {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  householdId String            @db.Uuid
+  type        TransactionType
+  status      TransactionStatus @default(PAID)
+  amountCents Int /// always > 0; direction comes from `type`
+  date        DateTime          @db.Date /// competence date: purchase / receipt / transfer
+  dueDate     DateTime?         @db.Date /// set ⇒ appears in "Contas a pagar" while PENDING
+  paidDate    DateTime?         @db.Date /// when it actually settled
+  description String
+  notes       String?
+
+  categoryId   String? @db.Uuid
+  accountId    String? @db.Uuid
+  toAccountId  String? @db.Uuid
+  creditCardId String? @db.Uuid
+  invoiceId    String? @db.Uuid
+
+  paidById String? @db.Uuid /// who paid / received — information only (everything belongs to the couple)
+
+  installmentPlanId String?   @db.Uuid
+  installmentNumber Int? /// 1-based ("3 de 6")
+  recurringRuleId   String?   @db.Uuid
+  occurrenceDate    DateTime? @db.Date /// which occurrence of the rule this row materializes
+
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt   DateTime? @db.Timestamptz(3) /// soft delete → powers "Desfazer"
+
+  household       Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  account         Account?         @relation("TransactionAccount", fields: [accountId], references: [id], onDelete: NoAction)
+  toAccount       Account?         @relation("TransactionToAccount", fields: [toAccountId], references: [id], onDelete: NoAction)
+  creditCard      CreditCard?      @relation(fields: [creditCardId], references: [id], onDelete: NoAction)
+  invoice         Invoice?         @relation(fields: [invoiceId], references: [id], onDelete: NoAction)
+  paidBy          HouseholdMember? @relation("TransactionPaidBy", fields: [paidById], references: [id], onDelete: NoAction)
+  createdBy       HouseholdMember? @relation("TransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  installmentPlan InstallmentPlan? @relation(fields: [installmentPlanId], references: [id], onDelete: Cascade)
+  recurringRule   RecurringRule?   @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+
+  tags Tag[]
+
+  @@unique([installmentPlanId, installmentNumber])
+  @@unique([recurringRuleId, occurrenceDate]) // idempotent generation of recurring occurrences
+  @@index([householdId, date])
+  @@index([householdId, status, dueDate])
+  @@index([householdId, categoryId, date])
+  @@index([accountId, date])
+  @@index([toAccountId])
+  @@index([creditCardId, date])
+  @@index([invoiceId])
+  @@index([paidById])
+}
+
+/// The parent of an installment purchase ("R$ 1.200 em 6x"). Each installment is a
+/// Transaction with installmentNumber, landing in invoice cycle (purchase cycle + k).
+model InstallmentPlan {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  householdId      String   @db.Uuid
+  description      String
+  totalAmountCents Int
+  installmentCount Int
+  purchaseDate     DateTime @db.Date
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+/// Rent, subscriptions, salary. A generator materializes PENDING occurrences for the
+/// upcoming months (idempotent thanks to Transaction @@unique([recurringRuleId, occurrenceDate])).
+model RecurringRule {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  householdId    String              @db.Uuid
+  type           TransactionType /// EXPENSE or INCOME (TRANSFER reserved for future use)
+  description    String
+  amountCents    Int /// expected amount; each generated occurrence can still be edited
+  categoryId     String?             @db.Uuid
+  accountId      String?             @db.Uuid
+  creditCardId   String?             @db.Uuid /// subscriptions charged on a card land in its invoices
+  paidById       String?             @db.Uuid
+  frequency      RecurrenceFrequency @default(MONTHLY)
+  interval       Int                 @default(1) /// every N periods
+  startDate      DateTime            @db.Date /// anchor: day-of-month / weekday come from here (31 → clamped)
+  endDate        DateTime?           @db.Date
+  autoConfirm    Boolean             @default(false) /// generate as PAID (e.g. automatic debit)
+  generatedUntil DateTime?           @db.Date /// horizon already materialized
+  pausedAt       DateTime?           @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  household  Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category   Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  account    Account?         @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  creditCard CreditCard?      @relation(fields: [creditCardId], references: [id], onDelete: NoAction)
+  paidBy     HouseholdMember? @relation(fields: [paidById], references: [id], onDelete: NoAction)
+
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+/// Free-form labels ("viagem-nordeste", "casamento").
+model Tag {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  householdId String  @db.Uuid
+  name        String
+  color       String? /// palette key
+
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([householdId, name])
+}

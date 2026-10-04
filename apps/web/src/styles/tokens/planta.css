@@ -1,0 +1,193 @@
+/*
+ * Casa — "Planta" (light, default) and "Aço noturno" (dark).
+ *
+ * Built on the Industry system from the Claude Design handoff: a light technical ground,
+ * ink, and ONE steel accent with 100–900 ramps. Square corners, 1px hairlines, "+"
+ * registration marks. No green/red: income is "+" and ↗ in steel, expenses are "−" in ink.
+ *
+ * Components only use the semantic names below (and the ramps for charts and tones).
+ * Dark mode redefines the same names under `.dark`, so nothing else changes.
+ */
+
+:root,
+.light {
+  /* ── Raw ramps (light) — the same step of each ramp has the same visual weight ── */
+  --steel-100: #eef6ff;
+  --steel-200: #d6ebff;
+  --steel-300: #b5d9fd;
+  --steel-400: #94bce3;
+  --steel-500: #749dc4;
+  --steel-600: #597ea3;
+  --steel-700: #416180;
+  --steel-800: #2c455d;
+  --steel-900: #1d2d3d;
+
+  --graphite-100: #f5f5f8;
+  --graphite-200: #e7e7ea;
+  --graphite-300: #d4d4d7;
+  --graphite-400: #b7b7ba;
+  --graphite-500: #98989b;
+  --graphite-600: #7a7a7d;
+  --graphite-700: #5d5d60;
+  --graphite-800: #424244;
+  --graphite-900: #2b2b2d;
+
+  /* ── Typography ── */
+  --typeface-ui: 'Barlow', system-ui, sans-serif;
+  --typeface-display: 'Barlow Condensed', system-ui, sans-serif;
+  --typeface-numeric: 'Barlow', system-ui, sans-serif;
+  --display-weight: 600;
+  --display-tracking: -0.015em;
+
+  /* ── Shape & density: square everything, hairlines carry structure ── */
+  --r-xs: 0px;
+  --r-sm: 0px;
+  --r-md: 0px;
+  --r-lg: 0px;
+  --r-xl: 0px;
+  --r-2xl: 0px;
+  --control-h: 2.25rem;
+  --row-h: 2.5rem;
+
+  /* ── Surfaces & ink ── */
+  --background: #f2f2f3;
+  --foreground: #1d1f20;
+  --surface: #f2f2f3; /* cards are line drawings on the ground */
+  --surface-raised: #f2f2f3; /* dialogs, popovers — lifted by shadow */
+  --surface-sunken: #e9e9ea; /* inputs, wells */
+  --muted: #e7e7ea; /* skeletons, neutral fills */
+  --muted-foreground: #5f6062; /* ≥ 4.5:1 on the ground */
+  --subtle-foreground: #86878a; /* placeholders */
+  --border: rgb(29 31 32 / 0.16);
+  --border-strong: rgb(29 31 32 / 0.45);
+  --input: rgb(29 31 32 / 0.16);
+  --accent: rgb(29 31 32 / 0.06); /* hover wash */
+  --accent-foreground: #1d1f20;
+
+  /* ── Steel ── */
+  --steel: #5980a6; /* the accent itself: marks, lines, chart strokes, focus */
+  --ring: #5980a6;
+  --primary: #4a7096; /* steel deep enough for text on it (≥ 4.5:1) */
+  --primary-hover: #416180;
+  --primary-pressed: #2c455d;
+  --primary-foreground: #f2f2f3;
+  --primary-soft: #eef6ff;
+  --primary-soft-foreground: #2c455d;
+
+  /* ── Meaning (no red/green: sign + arrow + word carry it) ── */
+  --positive: #416180; /* income: "+" and ↗ */
+  --positive-soft: #eef6ff;
+  --negative: #1d1f20; /* expenses / problems stay ink; icons + words explain */
+  --negative-soft: #e7e7ea;
+  --warning: #2c455d;
+  --warning-soft: #d6ebff;
+  --info: #416180;
+  --info-soft: #eef6ff;
+
+  /* ── The one dark field: login panel, toasts, "estourou" ── */
+  --emphasis: #1d2d3d;
+  --emphasis-foreground: #f2f2f3;
+  --emphasis-muted: #d6ebff;
+
+  /* ── Elevation: only dialogs, toasts and the FAB lift ── */
+  --elevation-1: 0 0 #0000;
+  --elevation-2: 0 3px 10px rgb(43 43 45 / 0.16);
+  --elevation-3: 0 12px 32px rgb(43 43 45 / 0.22);
+
+  /* ── Blueprint "+" registration marks ── */
+  --mark: rgb(29 31 32 / 0.55);
+
+  /* ── Category / account / member tones (keys from @spendly/shared PALETTE_KEYS) ── */
+  --palette-300: var(--steel-300);
+  --palette-300-fg: var(--steel-900);
+  --palette-500: var(--steel-500);
+  --palette-500-fg: #f2f2f3;
+  --palette-700: var(--steel-700);
+  --palette-700-fg: #f2f2f3;
+  --palette-900: var(--steel-900);
+  --palette-900-fg: #f2f2f3;
+  --palette-neutral: var(--graphite-500);
+  --palette-neutral-fg: #1d1f20;
+  --tone-ink: var(--steel-800);
+  --tone-neutral-ink: var(--graphite-800);
+}
+
+/* Touch screens: every control reaches the 44px target. */
+@media (pointer: coarse) {
+  :root {
+    --control-h: 2.75rem;
+    --row-h: 3rem;
+  }
+}
+
+.dark {
+  /* Ramps inverted so "100" is still the quiet tint and "900" the strongest contrast. */
+  --steel-100: #172431;
+  --steel-200: #1d2d3d;
+  --steel-300: #2c455d;
+  --steel-400: #416180;
+  --steel-500: #597ea3;
+  --steel-600: #749dc4;
+  --steel-700: #94bce3;
+  --steel-800: #b5d9fd;
+  --steel-900: #d6ebff;
+
+  --graphite-100: #1b2026;
+  --graphite-200: #232a31;
+  --graphite-300: #2e353d;
+  --graphite-400: #454c54;
+  --graphite-500: #6b7279;
+  --graphite-600: #8b9198;
+  --graphite-700: #a9aeb4;
+  --graphite-800: #c9cdd1;
+  --graphite-900: #e6e8ea;
+
+  --background: #14181c;
+  --foreground: #e6e8ea;
+  --surface: #14181c;
+  --surface-raised: #1b2026;
+  --surface-sunken: #1b2026;
+  --muted: #232a31;
+  --muted-foreground: #a3a9af;
+  --subtle-foreground: #6f767d;
+  --border: rgb(230 232 234 / 0.16);
+  --border-strong: rgb(230 232 234 / 0.45);
+  --input: rgb(230 232 234 / 0.16);
+  --accent: rgb(230 232 234 / 0.07);
+  --accent-foreground: #e6e8ea;
+
+  --steel: #8fb3d6;
+  --ring: #8fb3d6;
+  --primary: #8fb3d6;
+  --primary-hover: #a9c7e4;
+  --primary-pressed: #c3d9ee;
+  --primary-foreground: #14181c;
+  --primary-soft: #1d2d3d;
+  --primary-soft-foreground: #b5d9fd;
+
+  --positive: #94bce3;
+  --positive-soft: #1d2d3d;
+  --negative: #e6e8ea;
+  --negative-soft: #232a31;
+  --warning: #b5d9fd;
+  --warning-soft: #24384c;
+  --info: #94bce3;
+  --info-soft: #1d2d3d;
+
+  --emphasis: #2c455d;
+  --emphasis-foreground: #e6e8ea;
+  --emphasis-muted: #b5d9fd;
+
+  --elevation-2: 0 0 0 1px rgb(230 232 234 / 0.06), 0 3px 10px rgb(0 0 0 / 0.45);
+  --elevation-3: 0 0 0 1px rgb(230 232 234 / 0.08), 0 12px 32px rgb(0 0 0 / 0.6);
+
+  --mark: rgb(230 232 234 / 0.5);
+
+  --palette-300-fg: #e6e8ea;
+  --palette-500-fg: #e6e8ea;
+  --palette-700-fg: #14181c;
+  --palette-900-fg: #14181c;
+  --palette-neutral-fg: #e6e8ea;
+  --tone-ink: var(--steel-800);
+  --tone-neutral-ink: var(--graphite-800);
+}
