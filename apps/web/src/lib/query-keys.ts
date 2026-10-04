@@ -8,4 +8,8 @@ export const queryKeys = {
   invitePreview: (token: string) => ['invite-preview', token] as const,
   categories: ['categories'] as const,
   accounts: ['accounts'] as const,
+  /** Cards and everything under them (invoices, invoice detail) share one prefix. */
+  cards: ['cards'] as const,
+  cardInvoices: (cardId: string) => ['cards', cardId, 'invoices'] as const,
+  invoice: (invoiceId: string) => ['cards', 'invoice', invoiceId] as const,
 }

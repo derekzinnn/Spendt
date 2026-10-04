@@ -5,6 +5,7 @@ import { createAuthRateLimit } from '../middleware/rate-limit'
 
 import { accountsRouter } from './accounts.routes'
 import { authRouter } from './auth.routes'
+import { cardPurchasesRouter, cardsRouter, invoicesRouter } from './cards.routes'
 import { categoriesRouter } from './categories.routes'
 import { healthRouter } from './health'
 import { householdRouter } from './household.routes'
@@ -30,6 +31,9 @@ export function apiRouter(options: ApiOptions) {
   router.use('/household', requireHousehold, householdRouter())
   router.use('/categories', requireHousehold, categoriesRouter())
   router.use('/accounts', requireHousehold, accountsRouter())
+  router.use('/cards', requireHousehold, cardsRouter())
+  router.use('/invoices', requireHousehold, invoicesRouter())
+  router.use('/card-purchases', requireHousehold, cardPurchasesRouter())
 
   return router
 }

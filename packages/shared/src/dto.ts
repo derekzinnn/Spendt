@@ -3,8 +3,9 @@
  * instants as ISO 8601. Money is always integer cents.
  */
 import type { CategoryIconKey } from './category-icons'
-import type { IsoDate } from './dates'
-import type { AccountType, CategoryKind, HouseholdRole } from './enums'
+import type { IsoDate, MonthKey } from './dates'
+import type { AccountType, CardBrand, CategoryKind, HouseholdRole } from './enums'
+import type { InvoiceStatus } from './invoices'
 import type { PaletteKey } from './palette'
 
 export interface UserDto {
@@ -92,6 +93,79 @@ export interface AccountDto {
   /** Derived: initial balance + PAID movements dated on/after the initial balance date. */
   balanceCents: number
   archivedAt: string | null
+}
+
+/** An invoice with its derived numbers (never stored). */
+export interface InvoiceSummaryDto {
+  /** null for the current cycle when no purchase created it yet. */
+  id: string | null
+  creditCardId: string
+  /** Due month, "YYYY-MM" ("fatura de novembro" = "2026-11"). */
+  referenceMonth: MonthKey
+  periodStart: IsoDate
+  /** Exclusive: purchases on this day are already in the next invoice. */
+  closingDate: IsoDate
+  dueDate: IsoDate
+  /** Σ purchases − Σ credits. */
+  totalCents: number
+  /** Σ payments (TRANSFER rows into this invoice). */
+  paidCents: number
+  status: InvoiceStatus
+  /** Number of purchase/credit rows. */
+  itemCount: number
+}
+
+export interface CardDto {
+  id: string
+  name: string
+  brand: CardBrand
+  color: PaletteKey
+  lastFour: string | null
+  limitCents: number
+  closingDay: number
+  dueDay: number
+  paymentAccountId: string | null
+  holderId: string | null
+  archivedAt: string | null
+  /** Derived: purchases − credits − payments over every non-deleted row (future installments included). */
+  usedCents: number
+  availableCents: number
+  /** The invoice of today's cycle (purchases made today land here). */
+  currentInvoice: InvoiceSummaryDto
+}
+
+/** A purchase or credit row inside an invoice. */
+export interface CardItemDto {
+  id: string
+  kind: 'PURCHASE' | 'REFUND'
+  date: IsoDate
+  description: string
+  amountCents: number
+  categoryId: string | null
+  paidById: string | null
+  notes: string | null
+  installmentPlanId: string | null
+  installmentNumber: number | null
+  installmentCount: number | null
+}
+
+export interface InvoiceDetailDto extends InvoiceSummaryDto {
+  items: CardItemDto[]
+}
+
+export interface CardPurchaseResultDto {
+  /** Every row created (one per installment). */
+  items: CardItemDto[]
+  /** Invoice of the first (or only) installment. */
+  invoice: InvoiceSummaryDto
+  installmentPlanId: string | null
+  /** The purchase landed on an invoice that had already been paid in full. */
+  landedOnPaidInvoice: boolean
+}
+
+export interface DeletedItemsDto {
+  /** Ids to send back to POST /card-purchases/restore for "Desfazer". */
+  ids: string[]
 }
 
 export interface ApiErrorBody {

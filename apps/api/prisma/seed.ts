@@ -1,14 +1,23 @@
 /**
  * Development seed: one demo household for a couple, with the default pt-BR categories,
- * a few accounts, credit cards and recurring rules. No transactions yet — those arrive
- * with the engines that create them (Phases 2–3).
+ * a few accounts, credit cards with some purchases (incl. installments) and recurring rules.
+ * Account transactions arrive with the grid (Phase 3).
  *
  *   pnpm db:seed                    → creates the demo data (skips if it already exists)
  *   SEED_RESET=true pnpm db:seed    → wipes the demo household and recreates it
  *
  * Refuses to run with NODE_ENV=production.
  */
-import { currentMonthKey, firstDayOfMonth } from '@spendly/shared'
+import {
+  addDays,
+  allocateCents,
+  currentMonthKey,
+  firstDayOfMonth,
+  installmentDate,
+  resolveInstallmentCycle,
+  todayIso,
+  type InvoicePeriod,
+} from '@spendly/shared'
 import { z } from 'zod'
 
 import { env } from '../src/config/env'
@@ -187,7 +196,7 @@ async function main() {
           paymentAccountId: myBank.id,
         },
       })
-      await tx.creditCard.create({
+      const herCard = await tx.creditCard.create({
         data: {
           householdId,
           name: 'Itaú Click',
@@ -214,6 +223,129 @@ async function main() {
           holderId: null,
           paymentAccountId: joint.id,
         },
+      })
+
+      // ── Card purchases (dates relative to today, so the current invoices have content) ──
+      const today = todayIso()
+      const periodsByCard = new Map<string, InvoicePeriod[]>()
+      const purchase = async (
+        card: { id: string; closingDay: number; dueDay: number },
+        item: {
+          description: string
+          amount: number
+          daysAgo: number
+          categoryName: string
+          paidById: string
+          installments?: number
+        },
+      ) => {
+        const periods = periodsByCard.get(card.id) ?? []
+        periodsByCard.set(card.id, periods)
+        const date = addDays(today, -item.daysAgo)
+        const count = item.installments ?? 1
+        const amounts = allocateCents(reais(item.amount), Array(count).fill(1))
+        const plan =
+          count > 1
+            ? await tx.installmentPlan.create({
+                data: {
+                  householdId,
+                  description: item.description,
+                  totalAmountCents: reais(item.amount),
+                  installmentCount: count,
+                  purchaseDate: toDbDate(date),
+                },
+              })
+            : null
+        for (let k = 0; k < count; k++) {
+          const cycle = resolveInstallmentCycle(card, date, k, periods)
+          if (!cycle.existing) periods.push(cycle)
+          const invoice = await tx.invoice.upsert({
+            where: {
+              creditCardId_referenceMonth: {
+                creditCardId: card.id,
+                referenceMonth: toDbDate(cycle.referenceMonth),
+              },
+            },
+            create: {
+              householdId,
+              creditCardId: card.id,
+              referenceMonth: toDbDate(cycle.referenceMonth),
+              periodStart: toDbDate(cycle.periodStart),
+              closingDate: toDbDate(cycle.closingDate),
+              dueDate: toDbDate(cycle.dueDate),
+            },
+            update: {},
+          })
+          await tx.transaction.create({
+            data: {
+              householdId,
+              type: 'EXPENSE',
+              status: 'PAID',
+              amountCents: amounts[k]!,
+              date: toDbDate(installmentDate(date, k)),
+              description: item.description,
+              categoryId: category(item.categoryName),
+              creditCardId: card.id,
+              invoiceId: invoice.id,
+              paidById: item.paidById,
+              createdById: item.paidById,
+              installmentPlanId: plan?.id ?? null,
+              installmentNumber: plan ? k + 1 : null,
+            },
+          })
+        }
+      }
+      await purchase(myCard, {
+        description: 'Supermercado Pão de Açúcar',
+        amount: 412.37,
+        daysAgo: 2,
+        categoryName: 'Mercado › Supermercado',
+        paidById: me.id,
+      })
+      await purchase(myCard, {
+        description: 'iFood',
+        amount: 68.9,
+        daysAgo: 5,
+        categoryName: 'Restaurantes › Delivery',
+        paidById: me.id,
+      })
+      await purchase(myCard, {
+        description: 'Fone Bluetooth',
+        amount: 899.9,
+        daysAgo: 20,
+        categoryName: 'Compras › Eletrônicos',
+        paidById: me.id,
+        installments: 10,
+      })
+      await purchase(herCard, {
+        description: 'Farmácia',
+        amount: 87.5,
+        daysAgo: 1,
+        categoryName: 'Saúde › Farmácia',
+        paidById: her.id,
+      })
+      await purchase(herCard, {
+        description: 'Passagens Floripa',
+        amount: 1640,
+        daysAgo: 12,
+        categoryName: 'Viagens',
+        paidById: her.id,
+        installments: 6,
+      })
+      await purchase(sharedCard, {
+        description: 'Feira de sábado',
+        amount: 143.2,
+        daysAgo: 3,
+        categoryName: 'Mercado › Feira & hortifrúti',
+        paidById: her.id,
+      })
+      await purchase(sharedCard, {
+        description: 'Sofá novo',
+        amount: 3200,
+        daysAgo: 40,
+        categoryName: 'Moradia › Manutenção',
+        paidById: me.id,
+        installments: 12,
       })
 
       // ── Recurring rules ──

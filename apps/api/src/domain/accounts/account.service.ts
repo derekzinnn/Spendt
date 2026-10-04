@@ -72,7 +72,7 @@ async function withBalance(account: Account): Promise<AccountDto> {
 }
 
 /** The holder must be an active member of the same household (or null = joint). */
-async function assertHolder(householdId: string, holderId: string | null | undefined) {
+export async function assertHolder(householdId: string, holderId: string | null | undefined) {
   if (!holderId) return
   const member = await prisma.householdMember.findFirst({
     where: { id: holderId, householdId, leftAt: null },

@@ -154,3 +154,23 @@ export function formatMonthLabel(
 export function capitalize(value: string): string {
   return value.charAt(0).toLocaleUpperCase(APP_LOCALE) + value.slice(1)
 }
+
+// ───────────── Date arithmetic ─────────────
+
+/** "2026-02-28" + 1 → "2026-03-01". Plain calendar math (UTC), immune to local timezones. */
+export function addDays(value: IsoDate, amount: number): IsoDate {
+  const { year, month, day } = parseIsoDate(value)
+  const date = new Date(Date.UTC(year, month - 1, day + amount))
+  return toIsoDate({
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  })
+}
+
+/** "2026-01-31" + 1 month → "2026-02-28": the day is clamped to the target month. */
+export function addMonthsToDate(value: IsoDate, amount: number): IsoDate {
+  const { day } = parseIsoDate(value)
+  const { year, month } = parseMonthKey(addMonths(monthKeyOf(value), amount))
+  return toIsoDate(clampDay(year, month, day))
+}
