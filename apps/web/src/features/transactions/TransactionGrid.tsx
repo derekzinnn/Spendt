@@ -152,6 +152,9 @@ export function TransactionGrid({
               </th>
             </tr>
           </thead>
+          {/* One handler for the whole grid: the focusable cells inside are the controls,
+              and the keys that move between them are the same for every row. */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <tbody onKeyDown={onKeyDown}>
             {items.map((row, r) => (
               <tr key={row.id} className="border-b border-foreground/8 hover:bg-foreground/4">

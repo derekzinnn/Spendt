@@ -20,7 +20,7 @@ import { MemberAvatar } from '@/components/member/MemberAvatar'
 import { AmountInput } from '@/components/money/AmountInput'
 import { ColorPicker } from '@/components/pickers/ColorPicker'
 import { Button } from '@/components/ui/button'
-import { ChoiceChips, Field, Switch } from '@/components/ui/form'
+import { ChoiceChips, Field, SwitchField } from '@/components/ui/form'
 import { Input, Label } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useHouseholdContext } from '@/features/auth/api'
@@ -237,10 +237,13 @@ function AccountForm({
             control={form.control}
             name="negative"
             render={({ field }) => (
-              <label className="flex items-center gap-2.5 text-[13px]">
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              <SwitchField
+                checked={field.value}
+                onCheckedChange={field.onChange}
+                className="text-[13px]"
+              >
                 Saldo negativo (cheque especial)
-              </label>
+              </SwitchField>
             )}
           />
           <p className="text-xs text-pretty text-muted-foreground">

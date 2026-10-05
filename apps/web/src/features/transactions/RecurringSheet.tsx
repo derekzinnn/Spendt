@@ -13,7 +13,7 @@ import { z } from 'zod'
 
 import { AmountInput } from '@/components/money/AmountInput'
 import { Button } from '@/components/ui/button'
-import { Field, NativeSelect, Switch } from '@/components/ui/form'
+import { Field, NativeSelect, SwitchField } from '@/components/ui/form'
 import { Input, Label } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -310,15 +310,15 @@ function RecurringForm({
             control={form.control}
             name="autoConfirm"
             render={({ field }) => (
-              <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-                <Switch checked={field.value} onCheckedChange={field.onChange} className="mt-0.5" />
-                <span>
-                  Confirmar sozinho no dia
-                  <span className="block text-xs text-muted-foreground">
-                    Para débito automático e salário: vira "pago" sem você precisar marcar.
-                  </span>
-                </span>
-              </label>
+              <SwitchField
+                checked={field.value}
+                onCheckedChange={field.onChange}
+                description={
+                  'Para débito automático e salário: vira "pago" sem você precisar marcar.'
+                }
+              >
+                Confirmar sozinho no dia
+              </SwitchField>
             )}
           />
         ) : null}

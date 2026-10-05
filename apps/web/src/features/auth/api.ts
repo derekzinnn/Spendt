@@ -1,4 +1,4 @@
-import type { LoginInput, MeDto, RegisterInput } from '@spendly/shared'
+import type { ChangePasswordInput, LoginInput, MeDto, RegisterInput } from '@spendly/shared'
 import { queryOptions, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 
 import { apiFetch, ApiError } from '@/lib/api'
@@ -55,5 +55,16 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => apiFetch<null>('/auth/logout', { method: 'POST' }),
     onSettled: () => endSessionCache(queryClient),
+  })
+}
+
+/**
+ * Changing the password keeps this session and drops the others — the person stays logged
+ * in here, and anywhere else has to sign in again with the new one.
+ */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (input: ChangePasswordInput) =>
+      apiFetch<null>('/auth/change-password', { method: 'POST', json: input }),
   })
 }

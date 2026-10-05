@@ -1,4 +1,4 @@
-import type { LoginInput, RegisterInput } from '@spendly/shared'
+import type { ChangePasswordInput, LoginInput, RegisterInput } from '@spendly/shared'
 
 import { HttpError } from '../../lib/http-error'
 import { hashPassword, verifyPassword } from '../../lib/password'
@@ -80,4 +80,25 @@ export async function login(
   if (!(await verifyPassword(user.passwordHash, input.password))) throw INVALID_CREDENTIALS()
 
   return { userId: user.id, householdId: await pickActiveHouseholdId(user.id) }
+}
+
+/**
+ * Changes the password after checking the current one, and ends every **other** session of
+ * that user — if someone else was logged in, the new password locks them out, while the
+ * person doing it stays where they are.
+ */
+export async function changePassword(
+  userId: string,
+  currentSessionId: string,
+  input: ChangePasswordInput,
+): Promise<void> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } })
+  if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    throw HttpError.field('currentPassword', 'Senha atual incorreta.', 401, 'INVALID_CREDENTIALS')
+  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: await hashPassword(input.password) },
+  })
+  await prisma.session.deleteMany({ where: { userId, id: { not: currentSessionId } } })
 }

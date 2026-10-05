@@ -17,6 +17,8 @@ import { Segmented } from '@/components/ui/segmented'
 import { useMonth } from '@/lib/month'
 import { useIsDesktop } from '@/lib/use-media-query'
 
+import { ExportMenu } from '@/features/import/ExportMenu'
+
 import { useTransactions } from './api'
 import { InlineAddBar } from './InlineAddBar'
 import { useLookups } from './lookups'
@@ -112,9 +114,12 @@ export function TransactionsPage() {
           ]}
         />
         {view === 'lancamentos' ? (
-          <Button variant="secondary" onClick={() => setSheet({ open: true })}>
-            <Plus /> Novo lançamento
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <ExportMenu month={month} />
+            <Button variant="secondary" onClick={() => setSheet({ open: true })}>
+              <Plus /> Novo lançamento
+            </Button>
+          </div>
         ) : null}
       </div>
 

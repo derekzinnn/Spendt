@@ -9,6 +9,7 @@ import { billsRouter } from './bills.routes'
 import { cardPurchasesRouter, cardsRouter, invoicesRouter } from './cards.routes'
 import { categoriesRouter } from './categories.routes'
 import { healthRouter } from './health'
+import { exportRouter, importRouter } from './import-export.routes'
 import { householdRouter } from './household.routes'
 import { invitesRouter } from './invites.routes'
 import { recurringRouter } from './recurring.routes'
@@ -42,6 +43,8 @@ export function apiRouter(options: ApiOptions) {
   router.use('/recurring-rules', requireHousehold, recurringRouter())
   router.use('/bills', requireHousehold, billsRouter())
   router.use('/summary', requireHousehold, summaryRouter())
+  router.use('/import', requireHousehold, importRouter())
+  router.use('/export', requireHousehold, exportRouter())
 
   return router
 }

@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
+  changePasswordSchema,
   createInviteSchema,
   householdNameSchema,
   updateMemberSchema,
@@ -35,10 +36,11 @@ import { ColorPicker } from '@/components/pickers/ColorPicker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Field, Switch } from '@/components/ui/form'
+import { Field, SwitchField } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
-import { useHouseholdContext, useLogout } from '@/features/auth/api'
+import { useChangePassword, useHouseholdContext, useLogout } from '@/features/auth/api'
 import {
   useCreateInvite,
   useInvites,
@@ -426,22 +428,22 @@ function AppearanceSection() {
             ]}
           />
         </Field>
-        <label className="flex cursor-pointer items-center justify-between gap-4 border border-border px-4 py-3">
+        <SwitchField
+          checked={hidden}
+          onCheckedChange={toggle}
+          side="end"
+          className="border border-border px-4 py-3"
+          description="Esconde os valores na tela — bom para usar em público."
+        >
           <span className="flex items-center gap-3">
             {hidden ? (
-              <EyeOff className="size-5 text-muted-foreground" />
+              <EyeOff aria-hidden className="size-5 text-muted-foreground" />
             ) : (
-              <Eye className="size-5 text-muted-foreground" />
+              <Eye aria-hidden className="size-5 text-muted-foreground" />
             )}
-            <span>
-              <span className="block text-sm">Ocultar valores</span>
-              <span className="block text-xs text-muted-foreground">
-                Esconde os valores na tela — bom para usar em público.
-              </span>
-            </span>
+            Ocultar valores
           </span>
-          <Switch checked={hidden} onCheckedChange={toggle} />
-        </label>
+        </SwitchField>
         <Link
           to={ROUTES.design}
           className="flex items-center gap-2 self-start text-sm text-steel-700 hover:underline"
@@ -453,11 +455,39 @@ function AppearanceSection() {
   )
 }
 
+const passwordFormSchema = z.object({
+  currentPassword: changePasswordSchema.shape.currentPassword,
+  password: changePasswordSchema.shape.password,
+})
+
 function AccountSection() {
   const { user } = useHouseholdContext()
   const logout = useLogout()
+  const change = useChangePassword()
+  const form = useForm<z.infer<typeof passwordFormSchema>>({
+    resolver: zodResolver(passwordFormSchema),
+    defaultValues: { currentPassword: '', password: '' },
+  })
+  const { errors } = form.formState
+
+  const onSubmit = form.handleSubmit((values) =>
+    change.mutate(values, {
+      onSuccess: () => {
+        form.reset()
+        toast.success('Senha alterada', {
+          description: 'Outros aparelhos vão precisar entrar de novo.',
+        })
+      },
+      onError: (error) => showFormError(error, form.setError),
+    }),
+  )
+
   return (
-    <Section id="conta" title="Sua conta">
+    <Section
+      id="conta"
+      title="Sua conta"
+      description="Seu acesso. O nome que aparece para a casa fica em “Pessoas”."
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="truncate font-medium">{user.name}</p>
@@ -467,6 +497,42 @@ function AccountSection() {
           <LogOut /> Sair
         </Button>
       </div>
+
+      <Separator className="my-6" />
+
+      <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate>
+        <h3 className="text-[15px] font-medium">Trocar a senha</h3>
+        <Field
+          label="Senha atual"
+          htmlFor="current-password"
+          error={errors.currentPassword?.message}
+        >
+          <Input
+            id="current-password"
+            type="password"
+            autoComplete="current-password"
+            {...form.register('currentPassword')}
+          />
+        </Field>
+        <Field
+          label="Nova senha"
+          htmlFor="new-password"
+          error={errors.password?.message}
+          hint="Pelo menos 8 caracteres."
+        >
+          <Input
+            id="new-password"
+            type="password"
+            autoComplete="new-password"
+            {...form.register('password')}
+          />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={change.isPending}>
+            {change.isPending ? 'Salvando…' : 'Trocar a senha'}
+          </Button>
+        </div>
+      </form>
     </Section>
   )
 }

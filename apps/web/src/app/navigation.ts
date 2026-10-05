@@ -1,5 +1,6 @@
 import {
   Calendar,
+  FileUp,
   CreditCard,
   LayoutDashboard,
   Palette,
@@ -35,6 +36,7 @@ export const ROUTES = {
   cards: '/cartoes',
   accounts: '/contas',
   categories: '/categorias',
+  import: '/importar',
   settings: '/configuracoes',
   design: '/design',
 } as const
@@ -109,6 +111,16 @@ const CATEGORIES: NavItem = {
   description: 'Categorias e subcategorias com ícone, tom e orçamento mensal.',
 }
 
+const IMPORT: NavItem = {
+  to: ROUTES.import,
+  label: 'Importar extrato',
+  shortLabel: 'Importar',
+  icon: FileUp,
+  phase: 6,
+  description:
+    'Traga o extrato do banco ou a fatura do cartão: o arquivo é lido no seu aparelho e você confere linha por linha antes de gravar.',
+}
+
 export const SETTINGS_ITEM: NavItem = {
   to: ROUTES.settings,
   label: 'Configurações',
@@ -130,7 +142,7 @@ export const DESIGN_ITEM: NavItem = {
 export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   { title: 'Visão', items: [DASHBOARD] },
   { title: 'Registro', items: [TRANSACTIONS, INCOMES, BILLS] },
-  { title: 'Cadastros', items: [CARDS, ACCOUNTS, CATEGORIES, SETTINGS_ITEM] },
+  { title: 'Cadastros', items: [CARDS, ACCOUNTS, CATEGORIES, IMPORT, SETTINGS_ITEM] },
 ]
 
 export const ALL_NAV_ITEMS: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), DESIGN_ITEM]

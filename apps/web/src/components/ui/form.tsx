@@ -1,6 +1,6 @@
 import { ChevronDown, CircleAlert } from 'lucide-react'
 import { Switch as SwitchPrimitive } from 'radix-ui'
-import type { ComponentProps, ReactNode } from 'react'
+import { useId, type ComponentProps, type ReactNode } from 'react'
 
 import { cn } from '@/lib/cn'
 
@@ -65,6 +65,72 @@ export function Switch({ className, ...props }: ComponentProps<typeof SwitchPrim
     >
       <SwitchPrimitive.Thumb className="block size-4 bg-foreground/70 transition-[translate,background-color] duration-150 ease-out-soft data-[state=checked]:translate-x-4 data-[state=checked]:bg-primary-foreground" />
     </SwitchPrimitive.Root>
+  )
+}
+
+/**
+ * A switch with its text, named properly.
+ *
+ * A `<label>` can't name a switch: Radix renders a `<button role="switch">`, and buttons are
+ * not labelable — the text would be read out as nothing. So the text gets an id and the
+ * switch points at it with `aria-labelledby`, and clicking the text toggles it like a label
+ * would.
+ */
+export function SwitchField({
+  checked,
+  onCheckedChange,
+  children,
+  description,
+  disabled,
+  side = 'start',
+  className,
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  children: ReactNode
+  description?: ReactNode
+  disabled?: boolean
+  /** `end` puts the switch on the far right of a framed row (settings style). */
+  side?: 'start' | 'end'
+  className?: string
+}) {
+  const labelId = useId()
+  const toggle = () => {
+    if (!disabled) onCheckedChange(!checked)
+  }
+  const control = (
+    <Switch
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      aria-labelledby={labelId}
+      className={side === 'end' ? undefined : 'mt-0.5'}
+    />
+  )
+  const text = (
+    // The text toggles the switch the way a <label> would; the switch keeps the keyboard.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <span
+      id={labelId}
+      onClick={toggle}
+      className={cn('select-none', disabled ? 'opacity-45' : 'cursor-pointer')}
+    >
+      {children}
+      {description ? (
+        <span className="block text-xs text-muted-foreground">{description}</span>
+      ) : null}
+    </span>
+  )
+  return side === 'end' ? (
+    <div className={cn('flex items-center justify-between gap-4 text-sm', className)}>
+      {text}
+      {control}
+    </div>
+  ) : (
+    <div className={cn('flex items-start gap-2.5 text-sm', className)}>
+      {control}
+      {text}
+    </div>
   )
 }
 

@@ -47,5 +47,12 @@ export const loginSchema = z.object({
 })
 export type LoginInput = z.infer<typeof loginSchema>
 
+/** Changing the password needs the current one: a borrowed screen can't lock the owner out. */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string({ error: 'Informe sua senha atual' }).min(1, 'Informe sua senha atual'),
+  password: newPasswordSchema,
+})
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
+
 export const switchHouseholdSchema = z.object({ householdId: idSchema })
 export type SwitchHouseholdInput = z.infer<typeof switchHouseholdSchema>

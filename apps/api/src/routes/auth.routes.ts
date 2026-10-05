@@ -1,7 +1,12 @@
-import { loginSchema, registerSchema, switchHouseholdSchema } from '@spendly/shared'
+import {
+  changePasswordSchema,
+  loginSchema,
+  registerSchema,
+  switchHouseholdSchema,
+} from '@spendly/shared'
 import { Router, type Request, type RequestHandler } from 'express'
 
-import { login, register } from '../domain/auth/auth.service'
+import { changePassword, login, register } from '../domain/auth/auth.service'
 import { clearSessionCookie, endSession, startSession } from '../domain/auth/session'
 import { buildMe } from '../domain/households/household.service'
 import { HttpError } from '../lib/http-error'
@@ -40,6 +45,14 @@ export function authRouter({ rateLimit }: { rateLimit: RequestHandler }) {
   router.get('/me', requireAuth, async (req, res) => {
     const { user, member } = authOf(req)
     res.json(await buildMe(user.id, member?.householdId ?? null))
+  })
+
+  /** Change the password. Rate-limited like the other credential endpoints. */
+  router.post('/change-password', requireAuth, rateLimit, async (req, res) => {
+    const input = changePasswordSchema.parse(req.body)
+    const { user, session } = authOf(req)
+    await changePassword(user.id, session.id, input)
+    res.status(204).end()
   })
 
   /** Change the session's active household (multi-household users). */

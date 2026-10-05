@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import globals from 'globals'
@@ -58,9 +59,23 @@ export default defineConfig([
   // Web: browser + React
   {
     files: ['apps/web/**/*.{ts,tsx}'],
-    extends: [reactHooks.configs.flat['recommended-latest'], reactRefresh.configs.vite],
+    extends: [
+      reactHooks.configs.flat['recommended-latest'],
+      reactRefresh.configs.vite,
+      // Keeps the accessibility rules of CLAUDE.md enforced instead of remembered.
+      jsxA11y.flatConfigs.recommended,
+    ],
     languageOptions: { globals: globals.browser },
     rules: {
+      // Every autoFocus here is inside something the person just opened (a dialog, a sheet,
+      // a cell editor) — focus belongs there, and nothing moves under anyone on page load.
+      'jsx-a11y/no-autofocus': 'off',
+      // Our form primitives render the real control inside, so a label around them does
+      // associate — the rule just can't see through the component.
+      'jsx-a11y/label-has-associated-control': [
+        'error',
+        { controlComponents: ['AmountInput', 'Input', 'NativeSelect', 'Switch', 'ColorPicker'] },
+      ],
       // shadcn-style variant helpers and provider hooks live next to their component.
       'react-refresh/only-export-components': [
         'warn',

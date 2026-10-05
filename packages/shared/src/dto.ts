@@ -355,3 +355,52 @@ export interface FieldIssue {
   path: string
   message: string
 }
+
+/**
+ * One line of an import, as the server sees it: what it guessed and what it suspects is
+ * already there. Nothing is written until the person confirms this list.
+ */
+export interface ImportPreviewRowDto {
+  /** Index in the list that was sent, so the screen can match rows back. */
+  index: number
+  date: IsoDate
+  description: string
+  amountCents: number
+  type: 'EXPENSE' | 'INCOME'
+  /** Guessed from past rows with a similar description; null when nothing looked alike. */
+  categoryId: string | null
+  /** An existing transaction with the same date and amount — probably the same line. */
+  duplicateOfId: string | null
+}
+
+export interface ImportPreviewDto {
+  rows: ImportPreviewRowDto[]
+  /** How many rows look like something already in the ledger. */
+  duplicateCount: number
+  /** How many got a category guess. */
+  guessedCount: number
+}
+
+/** A row of the exported spreadsheet: names instead of ids, so the file reads on its own. */
+export interface ExportRowDto {
+  date: IsoDate
+  dueDate: IsoDate | null
+  paidDate: IsoDate | null
+  type: string
+  status: string
+  description: string
+  category: string
+  /** Account, card, or "Conta → Conta" for a transfer. */
+  source: string
+  paidBy: string
+  installment: string
+  notes: string
+  /** Negative for expenses, positive for incomes — a spreadsheet can just sum the column. */
+  amountCents: number
+}
+
+export interface ExportDto {
+  from: IsoDate
+  to: IsoDate
+  rows: ExportRowDto[]
+}

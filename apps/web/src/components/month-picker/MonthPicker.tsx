@@ -114,6 +114,9 @@ export function MonthPicker({ value, onChange, min, max, className }: MonthPicke
             </Button>
           </div>
 
+          {/* Arrow keys are handled for the group: the twelve buttons inside are the
+              controls, and one handler moves focus between them (roving focus). */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <div
             ref={gridRef}
             role="group"

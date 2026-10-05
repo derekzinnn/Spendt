@@ -32,7 +32,7 @@ packages and storage keys keep the `spendly` name.
 | **3** | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ✅ **Done** (2026-10-04) |
 | **4** | Bills to pay (list + calendar), invoice payment, incomes                              | ✅ **Done** (2026-10-05) |
 | **5** | Dashboard, budgets and alerts, clickable drill-downs                                  | ✅ **Done** (2026-10-05) |
-| 6     | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ⏭️ **Next**              |
+| **6** | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ✅ **Done** (2026-10-05) |
 
 Between Phase 1 and 2 (2026-10-04) the **Casa design system** replaced Terracota/Grafite and the
 money model became **everything shared** — see
@@ -92,17 +92,18 @@ for the API integration tests. To run them against your own Postgres instead, se
 
 ## Stack
 
-| Layer    | Choice (version)                                                                                                                                                                                                    |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Monorepo | pnpm 11 workspaces (`apps/*`, `packages/*`)                                                                                                                                                                         |
-| Web      | React 19, Vite 8, TypeScript 6.0, Tailwind CSS 4 (CSS-first config), shadcn/ui patterns on Radix (`radix-ui`), React Router 8, TanStack Query 5, React Hook Form 7 + Zod 4, Recharts 3, lucide-react, sonner        |
-| API      | Node 24, Express 5, Prisma 7.10 (`prisma-client` generator + `@prisma/adapter-pg`), Zod 4, pino, helmet, cookie-parser, express-rate-limit, Argon2id (`@node-rs/argon2`); tests: Vitest + supertest + `@prisma/dev` |
-| Shared   | `packages/shared` — TypeScript source consumed directly (money, dates, enums, Zod primitives, defaults)                                                                                                             |
-| Tooling  | ESLint 10 flat config + typescript-eslint (type-checked), Prettier 3 + Tailwind plugin, Vitest 5, tsup, tsx                                                                                                         |
+| Layer    | Choice (version)                                                                                                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Monorepo | pnpm 11 workspaces (`apps/*`, `packages/*`)                                                                                                                                                                                                |
+| Web      | React 19, Vite 8, TypeScript 6.0, Tailwind CSS 4 (CSS-first config), shadcn/ui patterns on Radix (`radix-ui`), React Router 8, TanStack Query 5, React Hook Form 7 + Zod 4, Recharts 3, lucide-react, sonner, read/write-excel-file (lazy) |
+| API      | Node 24, Express 5, Prisma 7.10 (`prisma-client` generator + `@prisma/adapter-pg`), Zod 4, pino, helmet, cookie-parser, express-rate-limit, Argon2id (`@node-rs/argon2`); tests: Vitest + supertest + `@prisma/dev`                        |
+| Shared   | `packages/shared` — TypeScript source consumed directly (money, dates, enums, Zod primitives, defaults)                                                                                                                                    |
+| Tooling  | ESLint 10 flat config + typescript-eslint (type-checked) + jsx-a11y, Prettier 3 + Tailwind plugin, Vitest 5, tsup, tsx                                                                                                                     |
 
 Not used on purpose: TanStack Table (v9's new API added nothing for a month-scoped grid filtered
-on the server — the grid is hand-built) and date-fns (shared calendar helpers cover it).
-Planned: SheetJS or similar (Phase 6).
+on the server — the grid is hand-built), date-fns (shared calendar helpers cover it) and SheetJS
+(npm's `xlsx` is stuck on the vulnerable 0.18.5; the maintained `read-excel-file` /
+`write-excel-file` pair reads and writes .xlsx and is imported only when a file is chosen).
 
 ---
 
@@ -124,7 +125,8 @@ Planned: SheetJS or similar (Phase 6).
 │   ├── enums.ts                  ← domain enums + pt-BR labels (mirror of Prisma enums)
 │   ├── palette.ts                ← tone keys (700 · 300 · 900 · 500 · neutral) + pt-BR labels
 │   ├── category-icons.ts         ← icon keys allowed for categories
-│   ├── schemas/                  ← Zod: primitives, auth, household, category, account, card, transaction, recurring, bill (+ tests)
+│   ├── schemas/                  ← Zod: primitives, auth, household, category, account, card, transaction, recurring,
+│   │                               bill, import-export (+ tests)
 │   ├── dto.ts                    ← response shapes (MeDto, AccountDto, CardDto, InvoiceSummaryDto…)
 │   └── defaults/categories.ts    ← default pt-BR category tree
 ├── apps/api
@@ -138,10 +140,11 @@ Planned: SheetJS or similar (Phase 6).
 │       ├── server.ts · app.ts    ← bootstrap, middleware order, graceful shutdown
 │       ├── config/env.ts         ← Zod-validated env (fails fast)
 │       ├── routes/               ← auth, invites, household, categories, accounts, cards (+ invoices, card-purchases),
-│       │                           transactions, recurring, bills, health
+│       │                           transactions, recurring, bills, summary, import/export, health
 │       ├── middleware/           ← auth (loadSession/require*/scopeOf), origin-check, rate-limit, error-handler
 │       ├── domain/               ← services: auth, households, invites, categories, accounts, cards/ (card, invoice, purchase,
-│       │                           payment), transactions/, recurring/ (lazy idempotent generation), bills/ (projection)
+│       │                           payment), transactions/, recurring/ (lazy idempotent generation), bills/ (projection),
+│       │                           summary/ (dashboard aggregates), import/ (preview, commit, match, export)
 │       ├── lib/                  ← prisma, logger, http-error, password, tokens, params, db-dates, enum-parity
 │       ├── types/express.d.ts    ← req.auth typing
 │       ├── test/                 ← global-setup (test DB), helpers, *.test.ts per area
@@ -165,10 +168,11 @@ Planned: SheetJS or similar (Phase 6).
         │                           UpcomingBills, CardsGlance, AccountsGlance, GettingStarted),
         │                           accounts/, cards/, categories/, settings/, household/ (api hooks),
         │                           transactions/ (grid, list, sheets, recurring), bills/ (list, calendar, pay), incomes/,
+        │                           import/ (ImportPage, FilePicker, column parsing, ExportMenu),
         │                           command-palette/, quick-add/, placeholder/, design-showcase/ (+ its static demo-data)
         └── lib/                  ← api fetch, query client + keys, session-cache, form-errors, undo-toast, theme,
                                     privacy, month (MonthProvider), brand (APP_NAME), ledger (invalidateLedger),
-                                    storage, media queries, css colors
+                                    spreadsheet (CSV + lazy XLSX), storage, media queries, css colors
 ```
 
 ---
@@ -325,7 +329,7 @@ the purchase rolls to the next cycle (one invoice per card per due month).
 
 ---
 
-## API (Phases 1–4)
+## API (Phases 1–6)
 
 All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 🔒 = session,
 🏠 = active household, 👑 = household owner, ⏱ = rate-limited.
@@ -335,6 +339,7 @@ All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 
 | `GET /health`                                                                                      | —                  | Liveness + DB probe                                                                                                                                                                                                     |
 | `POST /auth/register`                                                                              | ⏱                  | Create user + household (default categories), or join one with `inviteToken`; starts session                                                                                                                            |
 | `POST /auth/login` · `POST /auth/logout`                                                           | ⏱ · —              | Session start (fresh token) / end (server-side)                                                                                                                                                                         |
+| `POST /auth/change-password`                                                                       | 🔒⏱                | New password after checking the current one; every **other** session of that user is dropped                                                                                                                            |
 | `GET /auth/me`                                                                                     | 🔒                 | `MeDto`: user, active household, members, memberships                                                                                                                                                                   |
 | `POST /auth/switch-household`                                                                      | 🔒                 | Change the session's active household                                                                                                                                                                                   |
 | `GET /invites/:token` · `POST /invites/:token/accept`                                              | ⏱ · 🔒⏱            | Public invite preview · accept (e-mail must match)                                                                                                                                                                      |
@@ -358,6 +363,9 @@ All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 
 | `POST /bills/:id/pay`                                                                              | 🏠                 | Confirms a pending row: account + paid date (undo = back to PENDING)                                                                                                                                                    |
 | `POST /invoices/:id/payments`                                                                      | 🏠                 | Pays (part of) an invoice: a TRANSFER account → invoice; refuses `OVERPAYMENT`, `INVOICE_PAID`, `INVOICE_EMPTY`                                                                                                         |
 | `GET /summary?month=`                                                                              | 🏠                 | The whole dashboard in one request: spending by category (children rolled up, share and budget usage), income × expense for the last 6 months, month totals and budget alerts at 80% / 100%                             |
+| `POST /import/preview`                                                                             | 🏠                 | Reads statement rows (JSON, never the file): guesses each category from how the household filed that shop before, and flags lines whose day + amount are already in the ledger. Writes nothing                          |
+| `POST /import/commit` · `POST /import/undo`                                                        | 🏠                 | Writes the confirmed lines in one transaction (card rows land on the invoice of their date) and returns their ids · soft-deletes them again for "Desfazer"                                                              |
+| `GET /export?from=&to=`                                                                            | 🏠                 | The ledger over a window with names instead of ids and signed amounts, ready to become a spreadsheet                                                                                                                    |
 
 Auth details: Argon2id passwords (8–128 chars); unknown e-mails are verified against a dummy
 hash (same timing); sessions last 30 days, slide forward at most once a day, and are deleted on
@@ -497,6 +505,10 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
 | Breakpoint                    | The width where the furniture gets rearranged                       | `desk` = 900px: sidebar + header actions above it, bottom bar + FAB below                                               |
 | React context                 | A notice on the fridge everyone in the house can read               | `MonthProvider` holds the month once; any screen reads it with `useMonth()`                                             |
 | Containing block              | The frame a sticker is measured from                                | An `absolute` element positions against its nearest positioned ancestor — scroll boxes must be `relative` or it escapes |
+| Column mapping                | Telling the app which column of the bank's sheet is which           | The file's own headers are guessed first, then the shape of the first line; the person can correct any of it            |
+| Byte order mark (BOM)         | A sticker on the envelope saying which alphabet is inside           | Three bytes at the start of a CSV that tell Excel to read it as UTF-8 instead of mangling the accents                   |
+| Lazy route                    | Only unpacking the box for the room you walk into                   | `lazy: () => import(...)` gives each screen its own file, fetched when it is opened                                     |
+| Accessible name               | The name a screen reader says out loud for a control                | A `<label>` only names real form controls — a `<button role="switch">` needs `aria-labelledby`                          |
 
 ---
 
@@ -573,6 +585,16 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
 | 2026-10-05 | Dashboard charts hand-drawn (SVG donut, box bars) instead of Recharts                                                                | Recharts stays lazy behind `/design`; the shell bundle doesn't grow and the style matches the drawing exactly    |
 | 2026-10-05 | Dashboard split into `panels/`, the page is assembly only                                                                            | Each panel fetches what it needs and can be reordered without touching the others                                |
 | 2026-10-05 | Spending by category rolls children into the parent and shows at most 5 slices + "Outros"                                            | A ring stops being readable past five; the list below still carries every number                                 |
+| 2026-10-05 | Imports are parsed **in the browser**; the API only ever sees JSON rows                                                              | No multipart uploads, no file on the server, and the Origin check and cookie keep working unchanged              |
+| 2026-10-05 | Nothing is written until the person confirms the list (guesses and duplicates shown first)                                           | A statement is messy; a silent import is very hard to undo by hand                                               |
+| 2026-10-05 | Duplicates = same day + same amount + same account/card, matched one existing row per line                                           | Catches a re-imported statement without collapsing two genuinely identical purchases                             |
+| 2026-10-05 | Category guessed from the household's own history (60% word overlap), never from a built-in list                                     | Every couple names things their way; the app learns from what they already did                                   |
+| 2026-10-05 | `read-excel-file` / `write-excel-file` instead of SheetJS, imported on demand                                                        | npm's `xlsx` is stuck on the vulnerable 0.18.5; these are maintained and stay out of the shell bundle            |
+| 2026-10-05 | CSV is written with `;` and a BOM                                                                                                    | Excel pt-BR uses the comma as the decimal mark and needs the BOM to read UTF-8                                   |
+| 2026-10-05 | Changing the password ends every **other** session, never this one                                                                   | Locking out a borrowed screen is the point; logging yourself out is not                                          |
+| 2026-10-05 | Every screen is `lazy`; only the shell and the dashboard are in the first chunk                                                      | 262 → 181 KB gzip, and a phone pays for a screen when it opens it                                                |
+| 2026-10-05 | `eslint-plugin-jsx-a11y` enforces the accessibility conventions, with exemptions written next to the code                            | A one-time audit rots; a rule does not — it already caught labels that named nothing                             |
+| 2026-10-05 | Test files give the single in-memory connection back in `afterAll`                                                                   | PGlite serves one connection: a file that walks away holding it made the next one fail                           |
 
 ---
 
@@ -755,18 +777,58 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
   and 375px, light and dark: donut and hover, trend bars + table view, alert tags, drill-down
   landing on `?categoryId=` with the category chip, no horizontal overflow on the phone layout.
 
-## Next step — Phase 6 (import/export, polish, accessibility & performance)
+## Phase 6 — what was delivered (2026-10-05)
 
-1. **Import CSV/XLSX:** bank and card statements → mapping screen (columns → date, description,
-   value), duplicate detection, category guess from past rows, everything confirmed before it
-   is written.
-2. **Export:** the month's grid and a whole year to CSV/XLSX (SheetJS or similar), plus a plain
-   backup of the household's data.
-3. **Performance:** split routes with `lazy` and lift the quick-add form out of the shell chunk
-   (main bundle is ~262 KB gzip today); check the grid with a heavy month.
-4. **Accessibility pass:** keyboard path through every screen, focus order in sheets/dialogs,
-   screen-reader text on the grid and charts, 44px targets, reduced motion.
-5. **Account care:** password change, and password reset / change e-mail once there is e-mail
-   infrastructure.
+- **Shared:** `import-export.ts` schemas (`importRowSchema`, preview/commit with exactly one
+  target, `exportQuerySchema`, `MAX_IMPORT_ROWS` 2000), `changePasswordSchema`, and the
+  `ImportPreviewDto` / `ExportDto` shapes.
+- **Import — the file never leaves the device.** The browser reads the CSV/XLSX, maps its
+  columns and sends plain JSON rows, so the API stays JSON-only (the Origin check and the
+  cookie keep working) and nothing is written before the person sees it. `POST /import/preview`
+  guesses each category from how the household filed that shop before (`domain/import/match.ts`:
+  accents and punctuation stripped, noise words like "pix"/"ltda" dropped, 60% of the smaller
+  description's words must match) and flags lines whose day + amount are already in the ledger —
+  one existing row per line, so two identical lines don't both count as duplicates.
+  `POST /import/commit` writes everything in one database transaction; card lines land on the
+  invoice of their date exactly like a typed purchase. `POST /import/undo` takes it all back.
+- **Web — "Importar extrato"** (`/importar`), three steps that never surprise: _de onde vem_
+  (conta or cartão + the file, dropped or chosen), _quais colunas_ (guessed from the header, or
+  from the shape of the first line; header and "valores positivos são despesas" toggles; a live
+  sample showing which lines will be ignored and why), _confira e importe_ (every line with its
+  guessed category, the ones already in the ledger unticked, then one button). Finishes on the
+  grid with "Desfazer".
+- **Parsing, tested** (`features/import/parse.ts`, 12 web unit tests — the first in `apps/web`):
+  dates `31/12/2026`, `01-02-26`, `2026-12-31`; money `R$ 1.234,56`, `1,234.56`, `-45,90`,
+  `45,90-`, `(45,90)`; CSV with `;` or `,`, quoted fields and doubled quotes; a separate
+  "crédito" column; a date column never mistaken for the amount.
+- **Export:** "Exportar" on Lançamentos — the month or the whole year, CSV (BOM + `;`, opens in
+  Excel pt-BR) or XLSX (money stays a number). `GET /export` returns names instead of ids
+  (`Mercado › Feira & hortifrúti`, `Conta → Cartão`) and signs the amounts so any column total
+  means something.
+- **Account care:** password change in Configurações — asks for the current one, keeps this
+  session and drops every other one.
+- **Performance:** every screen is now `lazy`; the main chunk went from ~262 KB to **181 KB
+  gzip**, and the spreadsheet readers load only when a file is chosen.
+- **Accessibility:** `eslint-plugin-jsx-a11y` is on, so the rules in these conventions are
+  enforced instead of remembered. It found a real bug: a `<label>` cannot name a Radix switch
+  (it renders a `<button role="switch">`), so five switches had no accessible name — fixed once
+  in a new `SwitchField`. The remaining exemptions are written down where they are (autofocus
+  inside something the person just opened; key handlers delegated from a grid's focusable cells).
+- **Checks:** `pnpm check` green — 69 shared + 12 web + 89 API tests. Verified in headless
+  Chrome at 1440px and 375px: a five-line statement read, the bad line skipped, "Padaria"
+  guessed from history, 4 rows written and visible in the grid with "Desfazer", the export menu
+  and payload, the password fields, no horizontal overflow on the phone layout.
+
+## Next step — after Phase 6
+
+The roadmap is finished. What is worth doing next, roughly in order:
+
+1. **Password reset and change of e-mail**, once there is e-mail infrastructure (the only part
+   of "account care" still missing).
+2. **Reports:** a year view (month by month, category by category) and comparisons between
+   months, reusing the summary aggregates.
+3. **Import from the cards' own invoices** (PDF/OFX), and remembering a bank's column mapping so
+   the second import is one click.
+4. **Operations:** backup/restore of a household, and a look at the VPS/Caddy setup together.
 
 Git: `origin` = github.com/derekzinnn/Spendt (commit after each phase).

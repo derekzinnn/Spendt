@@ -1,18 +1,11 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
 
 import type { RouteHandle } from '@/components/layout/AppShell'
-import { AccountsPage } from '@/features/accounts/AccountsPage'
-import { BillsPage } from '@/features/bills/BillsPage'
 import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
-import { CardsPage } from '@/features/cards/CardsPage'
-import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
-import { IncomesPage } from '@/features/incomes/IncomesPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
-import { SettingsPage } from '@/features/settings/SettingsPage'
-import { TransactionsPage } from '@/features/transactions/TransactionsPage'
 
 import { BootScreen } from './BootScreen'
 import { guestOnlyLoader, requireSessionLoader, sessionAwareLoader } from './loaders'
@@ -23,24 +16,50 @@ import { RouteErrorPage } from './RouteErrorPage'
 
 const title = (value: string, monthly = false) => ({ title: value, monthly }) satisfies RouteHandle
 
+/**
+ * Screens are code-split: the first paint carries the shell and the dashboard, and each
+ * other screen (with its grid, charts, sheets or spreadsheet reader) arrives when it is
+ * opened. React Router's `lazy` keeps the loaders and handles synchronous.
+ */
+const lazyRoute = (
+  load: () => Promise<Record<string, React.ComponentType>>,
+  name: string,
+): ScreenRoute => ({
+  lazy: () => load().then((module) => ({ Component: module[name]! })),
+})
+
+/** What a screen contributes to its route: the component, eagerly or on demand. */
+type ScreenRoute = Pick<RouteObject, 'element' | 'lazy'>
+
 /** Screens that are real now; the rest of the navigation still shows its roadmap phase. */
-const BUILT: Record<string, RouteObject['element']> = {
-  [ROUTES.dashboard]: <DashboardPage />,
-  [ROUTES.accounts]: <AccountsPage />,
-  [ROUTES.cards]: <CardsPage />,
-  [ROUTES.transactions]: <TransactionsPage />,
-  [ROUTES.bills]: <BillsPage />,
-  [ROUTES.incomes]: <IncomesPage />,
-  [ROUTES.categories]: <CategoriesPage />,
-  [ROUTES.settings]: <SettingsPage />,
+const BUILT: Record<string, ScreenRoute> = {
+  [ROUTES.dashboard]: { element: <DashboardPage /> },
+  [ROUTES.accounts]: lazyRoute(() => import('@/features/accounts/AccountsPage'), 'AccountsPage'),
+  [ROUTES.cards]: lazyRoute(() => import('@/features/cards/CardsPage'), 'CardsPage'),
+  [ROUTES.transactions]: lazyRoute(
+    () => import('@/features/transactions/TransactionsPage'),
+    'TransactionsPage',
+  ),
+  [ROUTES.bills]: lazyRoute(() => import('@/features/bills/BillsPage'), 'BillsPage'),
+  [ROUTES.incomes]: lazyRoute(() => import('@/features/incomes/IncomesPage'), 'IncomesPage'),
+  [ROUTES.categories]: lazyRoute(
+    () => import('@/features/categories/CategoriesPage'),
+    'CategoriesPage',
+  ),
+  [ROUTES.import]: lazyRoute(() => import('@/features/import/ImportPage'), 'ImportPage'),
+  [ROUTES.settings]: lazyRoute(() => import('@/features/settings/SettingsPage'), 'SettingsPage'),
 }
 
 const appRoutes: RouteObject[] = ALL_NAV_ITEMS.filter((item) => item.to !== ROUTES.design).map(
-  (item) => ({
-    ...(item.to === ROUTES.dashboard ? { index: true } : { path: item.to.slice(1) }),
-    element: BUILT[item.to] ?? <PlaceholderPage item={item} />,
-    handle: title(item.label, item.monthly),
-  }),
+  (item): RouteObject => {
+    const route = {
+      ...(BUILT[item.to] ?? { element: <PlaceholderPage item={item} /> }),
+      handle: title(item.label, item.monthly),
+    }
+    return item.to === ROUTES.dashboard
+      ? { index: true, ...route }
+      : { path: item.to.slice(1), ...route }
+  },
 )
 
 export const router = createBrowserRouter([
@@ -59,16 +78,16 @@ export const router = createBrowserRouter([
           ...appRoutes,
           {
             path: `${ROUTES.cards.slice(1)}/:cardId`,
-            element: <CardsPage />,
+            ...lazyRoute(() => import('@/features/cards/CardsPage'), 'CardsPage'),
             handle: title('Cartões & Faturas', true),
           },
           {
+            // The showcase pulls in Recharts, which no other screen needs.
             path: ROUTES.design.slice(1),
-            // Code-split: the showcase pulls in Recharts, which the shell doesn't need.
-            lazy: () =>
-              import('@/features/design-showcase/DesignShowcasePage').then((module) => ({
-                Component: module.DesignShowcasePage,
-              })),
+            ...lazyRoute(
+              () => import('@/features/design-showcase/DesignShowcasePage'),
+              'DesignShowcasePage',
+            ),
             handle: title('Sistema de design'),
           },
           { path: '*', element: <NotFoundPage />, handle: title('Página não encontrada') },

@@ -10,8 +10,11 @@ import { createServer, type AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { PrismaPg } from '@prisma/adapter-pg'
 import { startPrismaDevServer } from '@prisma/dev'
 import type { TestProject } from 'vitest/node'
+
+import { PrismaClient } from '../generated/prisma/client'
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -33,6 +36,28 @@ function freePort(): Promise<number> {
       server.close(() => resolve(port))
     })
   })
+}
+
+/**
+ * Waits until the server answers a query, then hands the connection straight back.
+ *
+ * The migration runs in a child process, so the first test file would otherwise be the one
+ * discovering whether the server is up again. The in-memory server (PGlite) serves exactly
+ * one connection, which is why this lets go of it immediately.
+ */
+async function waitForDatabase(connectionString: string, attempts = 40) {
+  for (let attempt = 1; ; attempt++) {
+    const client = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 1 }) })
+    try {
+      await client.$queryRaw`SELECT 1`
+      await client.$disconnect()
+      return
+    } catch (error) {
+      await client.$disconnect().catch(() => undefined)
+      if (attempt >= attempts) throw error
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
 }
 
 export default async function setup(project: TestProject) {
@@ -61,6 +86,8 @@ export default async function setup(project: TestProject) {
     await stop?.()
     throw error
   }
+
+  await waitForDatabase(databaseUrl)
 
   project.provide('databaseUrl', databaseUrl)
 

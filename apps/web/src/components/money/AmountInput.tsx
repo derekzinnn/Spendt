@@ -72,6 +72,9 @@ export function AmountInput({
   const hero = size === 'hero'
 
   return (
+    // Clicking anywhere on the frame puts the caret in the input, the way a label would.
+    // The input itself is the control: it is focusable and takes every key on its own.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={cn(
         'group/amount flex items-baseline',

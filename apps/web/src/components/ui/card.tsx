@@ -14,6 +14,8 @@ export function CardHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 export function CardTitle({ className, ...props }: ComponentProps<'h3'>) {
+  // The content comes from whoever uses it; the rule can't see that far.
+  // eslint-disable-next-line jsx-a11y/heading-has-content
   return <h3 className={cn('text-xl leading-tight', className)} {...props} />
 }
 
