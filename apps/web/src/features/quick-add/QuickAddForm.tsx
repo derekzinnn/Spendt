@@ -1,13 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   formatBRL,
+  MAX_INSTALLMENTS,
   NEUTRAL_PALETTE_KEY,
   PALETTE_KEYS,
   positiveCentsSchema,
+  todayIso,
   type CategoryDto,
   type PaletteKey,
 } from '@spendly/shared'
-import { Plus, X } from 'lucide-react'
+import { CreditCard, Plus, X } from 'lucide-react'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link } from 'react-router'
@@ -18,10 +20,13 @@ import { ROUTES } from '@/app/navigation'
 import { CATEGORY_ICONS } from '@/components/category/category-icons'
 import { AmountInput } from '@/components/money/AmountInput'
 import { Button } from '@/components/ui/button'
+import { NativeSelect } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useAccounts } from '@/features/accounts/api'
 import { useHouseholdContext } from '@/features/auth/api'
+import { useCards, useCreatePurchase, useDeletePurchase } from '@/features/cards/api'
+import { announcePurchase, useInvoicePreview } from '@/features/cards/purchase-helpers'
 import { useCategories, useCreateCategory } from '@/features/categories/api'
 import { cn } from '@/lib/cn'
 
@@ -38,6 +43,8 @@ const quickAddSchema = z.object({
 type QuickAddValues = z.input<typeof quickAddSchema>
 
 const VISIBLE_CATEGORIES = 8
+/** Prefix of a card in the "Conta / cartão" choice (accounts use their plain id). */
+const CARD = 'card:'
 const normalize = (value: string) => value.trim().toLocaleLowerCase('pt-BR')
 
 /** The chips of quick add: hairline boxes; the chosen one takes a steel frame and wash. */
@@ -51,8 +58,8 @@ const pickClass = (selected: boolean) =>
 
 /**
  * The five-second quick add: amount first, then category, account and who paid.
- * Uses the household's real categories, accounts and members. Saving the transaction itself
- * arrives in Phase 3 — for now it validates and shows the toast.
+ * Uses the household's real categories, accounts, cards and members. Card purchases are saved
+ * for real (with installments); account entries are a preview until Phase 3.
  */
 export function QuickAddForm({
   onDone,
@@ -69,7 +76,11 @@ export function QuickAddForm({
   const categoriesQuery = useCategories()
   const accountsQuery = useAccounts()
   const createCategory = useCreateCategory()
+  const cardsQuery = useCards()
+  const createPurchase = useCreatePurchase()
+  const removePurchase = useDeletePurchase()
   const [query, setQuery] = useState('')
+  const [installments, setInstallments] = useState(1)
 
   const form = useForm<QuickAddValues>({
     resolver: zodResolver(quickAddSchema),
@@ -95,6 +106,10 @@ export function QuickAddForm({
   )
   const parentsById = useMemo(() => new Map(active.map((c) => [c.id, c])), [active])
   const accounts = (accountsQuery.data ?? []).filter((a) => !a.archivedAt)
+  // Cards only take expenses (refunds live on the Cartões screen).
+  const cards = type === 'EXPENSE' ? (cardsQuery.data ?? []).filter((c) => !c.archivedAt) : []
+  const card = accountId.startsWith(CARD) ? cards.find((c) => CARD + c.id === accountId) : undefined
+  const invoicePreview = useInvoicePreview(card, todayIso())
 
   const term = normalize(query)
   const visible: CategoryDto[] = term
@@ -114,7 +129,9 @@ export function QuickAddForm({
         ? type === 'INCOME'
           ? 'Escolha onde entrou'
           : 'Escolha a conta'
-        : 'Enter para salvar'
+        : card && invoicePreview
+          ? invoicePreview.label
+          : 'Enter para salvar'
   const canSave = Boolean(amountCents && categoryId && accountId)
 
   // Integration rule 8: never leave the flow — offer "Criar 'X'" right here.
@@ -139,9 +156,38 @@ export function QuickAddForm({
   }
 
   const submit = handleSubmit((values) => {
+    if (card) {
+      createPurchase.mutate(
+        {
+          creditCardId: card.id,
+          kind: 'PURCHASE',
+          description:
+            values.description.trim() ||
+            (active.find((c) => c.id === values.categoryId)?.name ?? 'Compra'),
+          amountCents: values.amountCents ?? 0,
+          date: todayIso(),
+          categoryId: values.categoryId,
+          installments,
+          paidById: values.paidById || null,
+        },
+        {
+          onSuccess: (result) => {
+            announcePurchase(result, () => {
+              const first = result.items[0]
+              if (first) removePurchase.mutate({ id: first.id, scope: 'all' })
+            })
+            reset({ ...values, amountCents: null, categoryId: '', description: '' })
+            setInstallments(1)
+            onDone?.()
+          },
+          onError: (error) => toast.error(error.message),
+        },
+      )
+      return
+    }
     const category = active.find((c) => c.id === values.categoryId)
     toast(`Lançamento salvo · ${formatBRL(values.amountCents ?? 0)}`, {
-      description: `${category?.name ?? '—'} · prévia: salvar de verdade chega na Fase 3`,
+      description: `${category?.name ?? '—'} · prévia: lançamentos em conta chegam na Fase 3`,
       action: { label: 'Desfazer', onClick: () => toast('Lançamento desfeito') },
     })
     reset({ ...values, amountCents: null, categoryId: '', description: '' })
@@ -168,6 +214,9 @@ export function QuickAddForm({
               onValueChange={(value) => {
                 field.onChange(value)
                 setValue('categoryId', '')
+                // Cards take expenses only: drop a chosen card when switching to income.
+                if (value === 'INCOME' && form.getValues('accountId').startsWith(CARD))
+                  setValue('accountId', '')
               }}
               options={[
                 { value: 'EXPENSE', label: 'Despesa' },
@@ -276,13 +325,12 @@ export function QuickAddForm({
             <span id="qa-account" className="text-xs text-muted-foreground">
               {type === 'INCOME' ? 'Onde entrou' : 'Conta / cartão'}
             </span>
-            {accounts.length === 0 && !accountsQuery.isPending ? (
+            {accounts.length === 0 && cards.length === 0 && !accountsQuery.isPending ? (
               <p className="border border-dashed border-border-strong p-3 text-[13px] text-muted-foreground">
                 Nenhuma conta ainda.{' '}
                 <Link to={ROUTES.accounts} onClick={onDone} className="text-primary underline">
                   Cadastrar conta
                 </Link>{' '}
-                · cartões chegam na Fase 2.
               </p>
             ) : (
               <div
@@ -290,6 +338,19 @@ export function QuickAddForm({
                 aria-labelledby="qa-account"
                 className="flex flex-wrap gap-1.5"
               >
+                {cards.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={field.value === CARD + c.id}
+                    onClick={() => field.onChange(CARD + c.id)}
+                    className={pickClass(field.value === CARD + c.id)}
+                  >
+                    <CreditCard aria-hidden />
+                    {c.name}
+                  </button>
+                ))}
                 {accounts.map((account) => (
                   <button
                     key={account.id}
@@ -307,6 +368,28 @@ export function QuickAddForm({
           </section>
         )}
       />
+
+      {card ? (
+        <div className="flex items-center gap-3">
+          <label htmlFor="qa-installments" className="text-xs text-muted-foreground">
+            Parcelas
+          </label>
+          <NativeSelect
+            id="qa-installments"
+            value={installments}
+            onChange={(event) => setInstallments(Number(event.target.value))}
+            className="w-40"
+          >
+            {Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n === 1
+                  ? 'À vista'
+                  : `${n}x${amountCents ? ` de ${formatBRL(Math.floor(amountCents / n))}` : ''}`}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : null}
 
       {members.length > 1 ? (
         <Controller
@@ -333,7 +416,12 @@ export function QuickAddForm({
         <span aria-live="polite" className="flex-1 text-xs text-muted-foreground">
           {hint}
         </span>
-        <Button type="submit" size="lg" disabled={!canSave} className="px-5 text-[15px]">
+        <Button
+          type="submit"
+          size="lg"
+          disabled={!canSave || createPurchase.isPending}
+          className="px-5 text-[15px]"
+        >
           Salvar
         </Button>
       </div>

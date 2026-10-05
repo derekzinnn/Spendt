@@ -5,6 +5,7 @@ import { AccountsPage } from '@/features/accounts/AccountsPage'
 import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
+import { CardsPage } from '@/features/cards/CardsPage'
 import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
@@ -23,6 +24,7 @@ const title = (value: string, monthly = false) => ({ title: value, monthly }) sa
 const BUILT: Record<string, RouteObject['element']> = {
   [ROUTES.dashboard]: <DashboardPage />,
   [ROUTES.accounts]: <AccountsPage />,
+  [ROUTES.cards]: <CardsPage />,
   [ROUTES.categories]: <CategoriesPage />,
   [ROUTES.settings]: <SettingsPage />,
 }
@@ -49,6 +51,11 @@ export const router = createBrowserRouter([
         element: <ProtectedLayout />,
         children: [
           ...appRoutes,
+          {
+            path: `${ROUTES.cards.slice(1)}/:cardId`,
+            element: <CardsPage />,
+            handle: title('Cartões & Faturas', true),
+          },
           {
             path: ROUTES.design.slice(1),
             // Code-split: the showcase pulls in Recharts, which the shell doesn't need.

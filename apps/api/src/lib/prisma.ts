@@ -4,7 +4,9 @@ import { env } from '../config/env'
 import { PrismaClient } from '../generated/prisma/client'
 
 export function createPrismaClient(connectionString: string = env.DATABASE_URL) {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString, max: env.DATABASE_POOL_SIZE }),
+  })
 }
 
 /**

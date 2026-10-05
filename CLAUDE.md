@@ -28,8 +28,8 @@ packages and storage keys keep the `spendly` name.
 | ----- | ------------------------------------------------------------------------------------- | ------------------------ |
 | **0** | Monorepo, tooling, full Prisma schema, seed, design system, AppShell, design showcase | ✅ **Done** (2026-10-03) |
 | **1** | Auth, household, invite flow, categories, accounts                                    | ✅ **Done** (2026-10-03) |
-| 2     | Credit cards, invoice engine (closing/due logic), installments                        | ⏭️ **Next**              |
-| 3     | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ⏳                       |
+| **2** | Credit cards, invoice engine (closing/due logic), installments                        | ✅ **Done** (2026-10-04) |
+| 3     | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ⏭️ **Next**              |
 | 4     | Bills to pay (list + calendar), invoice payment, incomes                              | ⏳                       |
 | 5     | Dashboard, budgets and alerts, clickable drill-downs                                  | ⏳                       |
 | 6     | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ⏳                       |
@@ -117,12 +117,13 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
 ├── .claude/launch.json           ← dev-server entry for Claude's browser preview
 ├── packages/shared/src
 │   ├── money.ts                  ← formatBRL, formatMoneyParts, parseBRL, allocateCents (+ tests)
-│   ├── dates.ts                  ← calendar-date & month helpers in America/Sao_Paulo (+ tests)
+│   ├── dates.ts                  ← calendar-date & month helpers, addDays/addMonthsToDate (+ tests)
+│   ├── invoices.ts               ← invoice engine: resolveInvoiceCycle/InstallmentCycle, invoiceStatus (+ tests)
 │   ├── enums.ts                  ← domain enums + pt-BR labels (mirror of Prisma enums)
 │   ├── palette.ts                ← tone keys (700 · 300 · 900 · 500 · neutral) + pt-BR labels
 │   ├── category-icons.ts         ← icon keys allowed for categories
-│   ├── schemas/                  ← Zod: primitives, auth, household, category, account (+ tests)
-│   ├── dto.ts                    ← response shapes (MeDto, CategoryDto, AccountDto, InviteDto…)
+│   ├── schemas/                  ← Zod: primitives, auth, household, category, account, card (+ tests)
+│   ├── dto.ts                    ← response shapes (MeDto, AccountDto, CardDto, InvoiceSummaryDto…)
 │   └── defaults/categories.ts    ← default pt-BR category tree
 ├── apps/api
 │   ├── prisma.config.ts          ← Prisma 7 config (schema path, migrations, seed, datasource)
@@ -134,9 +135,9 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
 │   └── src
 │       ├── server.ts · app.ts    ← bootstrap, middleware order, graceful shutdown
 │       ├── config/env.ts         ← Zod-validated env (fails fast)
-│       ├── routes/               ← auth, invites, household, categories, accounts, health
+│       ├── routes/               ← auth, invites, household, categories, accounts, cards (+ invoices, card-purchases), health
 │       ├── middleware/           ← auth (loadSession/require*/scopeOf), origin-check, rate-limit, error-handler
-│       ├── domain/               ← services: auth (session, register/login), households, invites, categories, accounts
+│       ├── domain/               ← services: auth, households, invites, categories, accounts, cards/ (card, invoice, purchase)
 │       ├── lib/                  ← prisma, logger, http-error, password, tokens, params, db-dates, enum-parity
 │       ├── types/express.d.ts    ← req.auth typing
 │       ├── test/                 ← global-setup (test DB), helpers, *.test.ts per area
@@ -156,7 +157,7 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
         ├── components/data/      ← KpiGrid/KpiCell, Ruler
         ├── components/month-picker/ · empty-state/ · member/ · layout/ (AppShell, AppHeader, Sidebar,
         │                           BottomNav + MoreSheet, BrandMark, PageHeader, nav-link-class)
-        ├── features/             ← auth/, dashboard/, accounts/, categories/, settings/, household/ (api hooks),
+        ├── features/             ← auth/, dashboard/, accounts/, cards/, categories/, settings/, household/ (api hooks),
         │                           quick-add/, placeholder/, design-showcase/ (+ its static demo-data)
         └── lib/                  ← api fetch, query client + keys, session-cache, form-errors, undo-toast, theme,
                                     privacy, month (MonthProvider), brand (APP_NAME), storage, media queries,
@@ -293,8 +294,14 @@ Not modeled yet: due dates moved to the next business day, revolving credit/inte
 refunds (estornos) UX — decide in Phase 2.
 
 Installments: installment _k_ has `date = purchaseDate + k months` (clamped) for competence
-reports and `invoiceId` of cycle _k_. Remainder cents go to the **first** installment
-(Phase 2 to confirm with `allocateCents`).
+reports and `invoiceId` of cycle _k_. Amounts come from `allocateCents` with equal weights: the
+extra cents of an uneven split go one each to the **first** installments (R$ 100,00 in 3x =
+33,34 + 33,33 + 33,33). Refunds (estornos) are card credits (`INCOME` rows on the card) that
+land on the invoice of their date and lower its total; they are never split.
+
+When the closing day changes, existing invoices keep their dates; a new cycle starts where the
+last one closed, and if its due month already has an invoice that closed before the purchase,
+the purchase rolls to the next cycle (one invoice per card per due month).
 
 ---
 
@@ -311,26 +318,31 @@ reports and `invoiceId` of cycle _k_. Remainder cents go to the **first** instal
 
 ---
 
-## API (Phase 1)
+## API (Phases 1–2)
 
 All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 🔒 = session,
 🏠 = active household, 👑 = household owner, ⏱ = rate-limited.
 
-| Method & path                                                            | Auth               | Purpose                                                                                      |
-| ------------------------------------------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------- |
-| `GET /health`                                                            | —                  | Liveness + DB probe                                                                          |
-| `POST /auth/register`                                                    | ⏱                  | Create user + household (default categories), or join one with `inviteToken`; starts session |
-| `POST /auth/login` · `POST /auth/logout`                                 | ⏱ · —              | Session start (fresh token) / end (server-side)                                              |
-| `GET /auth/me`                                                           | 🔒                 | `MeDto`: user, active household, members, memberships                                        |
-| `POST /auth/switch-household`                                            | 🔒                 | Change the session's active household                                                        |
-| `GET /invites/:token` · `POST /invites/:token/accept`                    | ⏱ · 🔒⏱            | Public invite preview · accept (e-mail must match)                                           |
-| `PATCH /household`                                                       | 🏠👑               | Household name                                                                               |
-| `PATCH /household/members/me`                                            | 🏠                 | Own display name & colour (distinct per household)                                           |
-| `GET/POST /household/invites` · `DELETE /household/invites/:id`          | 🏠 (👑 for writes) | Pending invites; create (link shown once, 7 days); revoke                                    |
-| `GET/POST /categories` · `PATCH /categories/:id`                         | 🏠                 | List (`?includeArchived=true`), create, edit                                                 |
-| `POST /categories/:id/archive` · `/unarchive` · `DELETE /categories/:id` | 🏠                 | Archive cascades to children; delete only if unused                                          |
-| `GET/POST /accounts` · `PATCH /accounts/:id`                             | 🏠                 | List with derived `balanceCents`, create, edit                                               |
-| `POST /accounts/:id/archive` · `/unarchive` · `DELETE /accounts/:id`     | 🏠                 | Delete only if no movements/rules                                                            |
+| Method & path                                                                                 | Auth               | Purpose                                                                                                              |
+| --------------------------------------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                                                                                 | —                  | Liveness + DB probe                                                                                                  |
+| `POST /auth/register`                                                                         | ⏱                  | Create user + household (default categories), or join one with `inviteToken`; starts session                         |
+| `POST /auth/login` · `POST /auth/logout`                                                      | ⏱ · —              | Session start (fresh token) / end (server-side)                                                                      |
+| `GET /auth/me`                                                                                | 🔒                 | `MeDto`: user, active household, members, memberships                                                                |
+| `POST /auth/switch-household`                                                                 | 🔒                 | Change the session's active household                                                                                |
+| `GET /invites/:token` · `POST /invites/:token/accept`                                         | ⏱ · 🔒⏱            | Public invite preview · accept (e-mail must match)                                                                   |
+| `PATCH /household`                                                                            | 🏠👑               | Household name                                                                                                       |
+| `PATCH /household/members/me`                                                                 | 🏠                 | Own display name & colour (distinct per household)                                                                   |
+| `GET/POST /household/invites` · `DELETE /household/invites/:id`                               | 🏠 (👑 for writes) | Pending invites; create (link shown once, 7 days); revoke                                                            |
+| `GET/POST /categories` · `PATCH /categories/:id`                                              | 🏠                 | List (`?includeArchived=true`), create, edit                                                                         |
+| `POST /categories/:id/archive` · `/unarchive` · `DELETE /categories/:id`                      | 🏠                 | Archive cascades to children; delete only if unused                                                                  |
+| `GET/POST /accounts` · `PATCH /accounts/:id`                                                  | 🏠                 | List with derived `balanceCents`, create, edit                                                                       |
+| `POST /accounts/:id/archive` · `/unarchive` · `DELETE /accounts/:id`                          | 🏠                 | Delete only if no movements/rules                                                                                    |
+| `GET/POST /cards` · `GET/PATCH /cards/:id`                                                    | 🏠                 | Cards with derived `usedCents`/`availableCents` and `currentInvoice`; closing/due day edits only affect new invoices |
+| `POST /cards/:id/archive` · `/unarchive` · `DELETE /cards/:id`                                | 🏠                 | Archived cards refuse purchases; delete only if unused                                                               |
+| `GET /cards/:id/invoices` · `GET /invoices/:id`                                               | 🏠                 | Invoice timeline (future installments included) · invoice detail with its items                                      |
+| `POST /card-purchases`                                                                        | 🏠                 | Purchase or refund; `installments` 1–24 → plan + one row per installment; warns on a paid invoice                    |
+| `PATCH/DELETE /card-purchases/:id?scope=one\|following\|all` · `POST /card-purchases/restore` | 🏠                 | Edit text/category/paid-by · soft delete (returns ids) · "Desfazer"                                                  |
 
 Auth details: Argon2id passwords (8–128 chars); unknown e-mails are verified against a dummy
 hash (same timing); sessions last 30 days, slide forward at most once a day, and are deleted on
@@ -607,27 +619,43 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
   settings, placeholder, month popover, quick add (desktop + phone), "Mais" sheet, showcase —
   no horizontal overflow at 375px.
 
-## Next step — Phase 2 (credit cards, invoice engine, installments)
+## Phase 2 — what was delivered (2026-10-04)
 
-1. **Shared:** `resolveInvoiceCycle(card, purchaseDate)` + `installmentCycle(…, k)` as pure
-   functions in `@spendly/shared`, unit-tested for **every** row of the edge-case table above
-   (31st/February, exactly-on-closing, leap year, due-before-closing, snapshot override); pure
-   invoice status/total helpers.
-2. **API — cards:** CRUD with archive (`/api/cards`), validation (days 1–31, payment account in
-   the household, holder member or shared), available-limit query (formula above).
-3. **API — invoices:** `findOrCreateInvoice` (upsert on `[creditCardId, referenceMonth]`, period
-   snapshot, gap-free `periodStart`), `GET /api/cards/:id/invoices` timeline with derived totals
-   and status, invoice detail with its transactions.
-4. **API — card purchases & installments:** minimal create endpoint for card purchases (the full
-   grid is Phase 3) that assigns the invoice; `InstallmentPlan` + n transactions (remainder cents
-   in the first installment via `allocateCents`); edit/delete scopes "só esta / esta e as
-   próximas / todas"; decide refunds (estornos).
-5. **Web:** "Cartões & Faturas" — card list (showcase pattern: status tag, invoice, dates, limit `Ruler`), current invoice +
-   available limit, invoice timeline per card, invoice detail; card form sheet; cards as payment
-   options in quick add.
-6. Tests: invoice-engine unit tests + API integration tests for assignment, installments and
-   limit; keep `pnpm check` green.
+- **Invoice engine** (`packages/shared/src/invoices.ts`): pure `resolveInvoiceCycle`,
+  `resolveInstallmentCycle`, `installmentDate`, `invoiceStatus` + `INVOICE_STATUS_LABELS`; every
+  row of the edge-case table, snapshots after a closing-day change, gap-free and non-overlapping
+  periods, one invoice per due month, installments shifting the cycle — 24 unit tests. Shared by
+  the API (assignment) and the web (previews).
+- **API:** cards CRUD/archive with derived limit (one SQL aggregate) and current invoice;
+  invoices with derived totals/status (one SQL aggregate, `loadInvoices`); card purchases with
+  installment plans (`allocateCents`), refunds, scoped edit/delete ("só esta / esta e as
+  próximas / todas"), restore for "Desfazer", warning when landing on a paid invoice;
+  tenant isolation. 13 integration tests.
+- **Web:** "Cartões & Faturas" (`/cartoes`, `/cartoes/:cardId`): card list (status, current
+  invoice, limit ruler), card detail (KPIs, invoice strip driven by the header month, invoice
+  table with installments "2/10", refunds, per-scope delete + Desfazer), archived cards; card
+  form with a live "melhor dia de compra" preview; "Nova compra" sheet (installments with
+  per-installment value, refund, invoice preview); quick add saves **card** purchases for real
+  (with installments, invoice hint, Desfazer) — account entries stay a preview until Phase 3;
+  dashboard "Cartões" panel.
+- **Seed:** card purchases relative to today, incl. installment plans.
+- **Checks:** `pnpm check` green (65 shared + 53 API tests). Verified in headless Chrome at 1440px
+  and 375px (no overflow): cards page, invoice switching, purchase sheet preview, quick add saving
+  a 3x purchase into the right invoice, dashboard panel.
+
+## Next step — Phase 3 (transactions grid, quick add, command palette, recurring rules)
+
+1. **API — transactions:** list with filters (month, type, category, account/card, status, text),
+   totals, create/edit/soft-delete/restore for account rows (expense, income, transfer); card rows
+   keep going through the card-purchase rules; keyset pagination.
+2. **Web — "Lançamentos" grid** (TanStack Table): inline editing, keyboard navigation, sticky
+   total, filters as chips (pattern in the showcase), grouping by day/category, mobile list view.
+3. **Quick add** saves account entries for real; inline "Criar" for cards too (rule 8).
+4. **Command palette** (Ctrl/⌘+K): search transactions and jump to screens, with "Lançar" first.
+5. **Recurring rules:** CRUD + idempotent generation of PENDING occurrences
+   (`(recurringRuleId, occurrenceDate)` unique) feeding the forecast and "Contas a pagar".
+6. Tests for filters/totals, transfers and balances, recurrence idempotency.
 
 Known follow-ups: main JS chunk is ~242 KB gzip — split routes (`lazy`) and the quick-add form
 in the Phase 6 performance pass. Password reset / change e-mail not built yet (no e-mail
-infrastructure) — consider for Phase 6. No git repository yet (`git init` when ready).
+infrastructure) — consider for Phase 6. Git: `origin` = github.com/derekzinnn/Spendt (commit after each phase).

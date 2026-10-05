@@ -11,6 +11,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3333),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  /** Max connections in the Postgres pool. */
+  DATABASE_POOL_SIZE: z.coerce.number().int().positive().default(10),
   /** Public origin of the web app, e.g. https://spendly.example.com. Used for Origin checks (Phase 1). */
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
   /** Express "trust proxy" setting. Behind Caddy on the same host, "loopback" is right. */
