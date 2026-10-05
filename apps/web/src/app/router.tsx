@@ -2,12 +2,14 @@ import { createBrowserRouter, type RouteObject } from 'react-router'
 
 import type { RouteHandle } from '@/components/layout/AppShell'
 import { AccountsPage } from '@/features/accounts/AccountsPage'
+import { BillsPage } from '@/features/bills/BillsPage'
 import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { CardsPage } from '@/features/cards/CardsPage'
 import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
+import { IncomesPage } from '@/features/incomes/IncomesPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { TransactionsPage } from '@/features/transactions/TransactionsPage'
@@ -27,6 +29,8 @@ const BUILT: Record<string, RouteObject['element']> = {
   [ROUTES.accounts]: <AccountsPage />,
   [ROUTES.cards]: <CardsPage />,
   [ROUTES.transactions]: <TransactionsPage />,
+  [ROUTES.bills]: <BillsPage />,
+  [ROUTES.incomes]: <IncomesPage />,
   [ROUTES.categories]: <CategoriesPage />,
   [ROUTES.settings]: <SettingsPage />,
 }

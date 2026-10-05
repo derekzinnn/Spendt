@@ -237,6 +237,59 @@ export interface RecurringRuleDto {
   nextOccurrence: IsoDate | null
 }
 
+/** How urgent a bill is, from its due date vs today. */
+export const BILL_BUCKETS = ['overdue', 'today', 'week', 'later'] as const
+export type BillBucket = (typeof BILL_BUCKETS)[number]
+export const BILL_BUCKET_LABELS: Record<BillBucket, string> = {
+  overdue: 'Atrasadas',
+  today: 'Vencem hoje',
+  week: 'Próximos 7 dias',
+  later: 'Mais para frente',
+}
+
+/**
+ * One line of "Contas a pagar" — a projection, never a table: either a PENDING ledger row
+ * with a due date, or a credit-card invoice that still has something left to pay.
+ */
+export interface BillDto {
+  kind: 'transaction' | 'invoice'
+  /** Transaction id or invoice id (use `kind` to know which endpoint to call). */
+  id: string
+  dueDate: IsoDate
+  description: string
+  /** What is still owed: the row's amount, or the invoice's total − paid. */
+  amountCents: number
+  /** Invoices: the full total and what was already paid (partial payments). */
+  totalCents: number
+  paidCents: number
+  bucket: BillBucket
+  /** Days until the due date (negative when overdue). */
+  daysUntilDue: number
+  categoryId: string | null
+  creditCardId: string | null
+  /** Suggested account to pay from: the row's own, or the card's payment account. */
+  accountId: string | null
+  paidById: string | null
+  recurringRuleId: string | null
+}
+
+export interface BillTotalsDto {
+  overdueCents: number
+  /** Everything still owed in the window (overdue included). */
+  dueCents: number
+  /** Bills with a due date in the month that are already settled. */
+  paidCents: number
+  count: number
+  paidCount: number
+}
+
+export interface BillsDto {
+  items: BillDto[]
+  /** Already settled, with a due date in the month being viewed. */
+  paid: BillDto[]
+  totals: BillTotalsDto
+}
+
 export interface ApiErrorBody {
   error: {
     code: string

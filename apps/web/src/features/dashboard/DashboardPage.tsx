@@ -4,6 +4,7 @@ import {
   formatBRL,
   formatMonthLabel,
   monthName,
+  parseIsoDate,
   parseMonthKey,
 } from '@spendly/shared'
 import {
@@ -32,10 +33,12 @@ import { Skeleton } from '@/components/ui/misc'
 import { ACCOUNT_TYPE_META } from '@/features/accounts/account-meta'
 import { useAccounts } from '@/features/accounts/api'
 import { useHouseholdContext } from '@/features/auth/api'
+import { useBills } from '@/features/bills/api'
 import { useCards } from '@/features/cards/api'
 import { invoiceDates } from '@/features/cards/card-meta'
 import { InvoiceStatusTag } from '@/features/cards/InvoiceStatusTag'
 import { useCategories } from '@/features/categories/api'
+import { useLookups } from '@/features/transactions/lookups'
 import { useInvites } from '@/features/household/api'
 import { useTransactions } from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
@@ -81,10 +84,13 @@ function Kpis() {
   const navigate = useNavigate()
   const accounts = useAccounts()
   const transactions = useTransactions({ month })
+  const bills = useBills({ month })
   const active = accounts.data?.filter((a) => !a.archivedAt) ?? []
   const balance = active.reduce((sum, a) => sum + a.balanceCents, 0)
   const totals = transactions.data?.totals
   const pending = pendingSplit(transactions.data?.items ?? [])
+  // Everything still to pay: bills and invoices alike (the projection has both).
+  const toPayCents = bills.data?.totals.dueCents ?? pending.expenseCents
   const isCurrent = month === currentMonthKey()
   const loading = (value: ReactNode, pendingQuery: boolean) =>
     pendingQuery ? <Skeleton className="my-1 h-7 w-36" /> : value
@@ -112,11 +118,7 @@ function Kpis() {
           <Money cents={totals?.expenseCents ?? 0} size="xl" tone="neutral" />,
           transactions.isPending,
         )}
-        sub={
-          pending.expenseCents > 0
-            ? `${formatBRL(pending.expenseCents)} ainda a pagar`
-            : 'contas e cartões do mês'
-        }
+        sub={toPayCents > 0 ? `${formatBRL(toPayCents)} ainda a pagar` : 'contas e cartões do mês'}
         onClick={() => void navigate(`${ROUTES.transactions}?kind=expense`)}
       />
       <KpiCell
@@ -131,18 +133,18 @@ function Kpis() {
           isCurrent ? (
             loading(
               <Money
-                cents={balance + pending.incomeCents - pending.expenseCents}
+                cents={balance + pending.incomeCents - toPayCents}
                 size="xl"
                 tone="neutral"
                 className="text-steel-800"
               />,
-              transactions.isPending || accounts.isPending,
+              transactions.isPending || accounts.isPending || bills.isPending,
             )
           ) : (
             <span className="font-display text-[1.875rem] leading-[1.1]">—</span>
           )
         }
-        sub={isCurrent ? 'saldo + a receber − a pagar (faturas na Fase 4)' : 'só para o mês atual'}
+        sub={isCurrent ? 'saldo + a receber − contas e faturas a pagar' : 'só para o mês atual'}
       />
     </KpiGrid>
   )
@@ -325,6 +327,80 @@ function Budgets() {
   )
 }
 
+/** The design's "Próximas contas": date box, what it is, when it falls due. */
+function UpcomingBills() {
+  const { month } = useMonth()
+  const { data, isPending } = useBills({ month })
+  const lookups = useLookups()
+  const items = (data?.items ?? []).slice(0, 5)
+
+  return (
+    <Card className="flex flex-col gap-1.5 p-5">
+      <CardHead
+        title="Próximas contas"
+        aside={
+          <Link to={ROUTES.bills} className="text-[13px] text-steel-700 hover:underline">
+            Ver todas
+          </Link>
+        }
+      />
+      {isPending ? (
+        <Skeleton className="h-40" />
+      ) : items.length === 0 ? (
+        <p className="border-t border-border pt-3 text-sm text-muted-foreground">
+          Nada a pagar até o fim do mês.
+        </p>
+      ) : (
+        items.map((bill) => {
+          const category = lookups.category(bill.categoryId)
+          const late = bill.bucket === 'overdue'
+          const { day, month: billMonth } = parseIsoDate(bill.dueDate)
+          return (
+            <Link
+              key={`${bill.kind}:${bill.id}`}
+              to={ROUTES.bills}
+              className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 border-t border-border py-2 transition-colors hover:bg-steel/7"
+            >
+              <span
+                className={cn(
+                  'border py-0.5 text-center leading-tight',
+                  late ? 'border-foreground' : 'border-border',
+                )}
+              >
+                <span className="block font-display text-lg">{String(day).padStart(2, '0')}</span>
+                <span className="block text-[10px] text-muted-foreground uppercase">
+                  {monthName(billMonth, 'short')}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center gap-2">
+                {bill.kind === 'invoice' ? (
+                  <CreditCard aria-hidden className="size-4 shrink-0 text-steel" />
+                ) : category ? (
+                  <CategoryIcon icon={category.icon} color={category.color} size="xs" />
+                ) : null}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">{bill.description}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {bill.daysUntilDue < 0
+                      ? `Venceu há ${-bill.daysUntilDue} dias`
+                      : bill.daysUntilDue === 0
+                        ? 'Vence hoje'
+                        : `em ${bill.daysUntilDue} dias`}
+                  </span>
+                </span>
+              </span>
+              <span className="flex flex-col items-end gap-1">
+                <Money cents={bill.amountCents} size="sm" />
+                {late ? <Badge tone="negative">Atrasada</Badge> : null}
+              </span>
+            </Link>
+          )
+        })
+      )}
+    </Card>
+  )
+}
+
 /** The design's "Cartões" list: current invoice, its dates and the limit ruler per card. */
 function CardsGlance() {
   const cards = useCards()
@@ -442,9 +518,10 @@ export function DashboardPage() {
         <Budgets />
       </div>
       <div className="grid items-start gap-7 lg:grid-cols-2">
-        <AccountsGlance />
+        <UpcomingBills />
         <CardsGlance />
       </div>
+      <AccountsGlance />
     </>
   )
 }

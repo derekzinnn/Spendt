@@ -15,4 +15,6 @@ export const queryKeys = {
   transactions: ['transactions'] as const,
   transactionList: (query: object) => ['transactions', query] as const,
   recurring: ['recurring'] as const,
+  bills: ['bills'] as const,
+  billList: (query: object) => ['bills', query] as const,
 }

@@ -1,6 +1,7 @@
 import {
   createCardPurchaseSchema,
   createCardSchema,
+  payInvoiceSchema,
   purchaseScopeSchema,
   restoreTransactionsSchema,
   updateCardPurchaseSchema,
@@ -17,6 +18,7 @@ import {
   updateCard,
 } from '../domain/cards/card.service'
 import { getInvoiceDetail, listCardInvoices } from '../domain/cards/invoice.service'
+import { payInvoice } from '../domain/cards/payment.service'
 import {
   createCardPurchase,
   deleteCardPurchase,
@@ -77,14 +79,23 @@ export function cardsRouter() {
 /** `/invoices` — mounted behind `requireHousehold`. */
 export function invoicesRouter() {
   const router = Router()
+  const INVOICE_NOT_FOUND = 'Fatura não encontrada.'
+
   router.get('/:id', async (req, res) => {
     res.json(
-      await getInvoiceDetail(
-        scopeOf(req).householdId,
-        idParam(req, 'id', 'Fatura não encontrada.'),
-      ),
+      await getInvoiceDetail(scopeOf(req).householdId, idParam(req, 'id', INVOICE_NOT_FOUND)),
     )
   })
+
+  /** Pays (part of) an invoice: a TRANSFER from an account into it. */
+  router.post('/:id/payments', async (req, res) => {
+    const input = payInvoiceSchema.parse(req.body)
+    const { householdId, member } = scopeOf(req)
+    res
+      .status(201)
+      .json(await payInvoice(householdId, idParam(req, 'id', INVOICE_NOT_FOUND), member.id, input))
+  })
+
   return router
 }
 
