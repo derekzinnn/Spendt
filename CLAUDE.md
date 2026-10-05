@@ -29,8 +29,8 @@ packages and storage keys keep the `spendly` name.
 | **0** | Monorepo, tooling, full Prisma schema, seed, design system, AppShell, design showcase | ✅ **Done** (2026-10-03) |
 | **1** | Auth, household, invite flow, categories, accounts                                    | ✅ **Done** (2026-10-03) |
 | **2** | Credit cards, invoice engine (closing/due logic), installments                        | ✅ **Done** (2026-10-04) |
-| 3     | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ⏭️ **Next**              |
-| 4     | Bills to pay (list + calendar), invoice payment, incomes                              | ⏳                       |
+| **3** | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ✅ **Done** (2026-10-04) |
+| 4     | Bills to pay (list + calendar), invoice payment, incomes                              | ⏭️ **Next**              |
 | 5     | Dashboard, budgets and alerts, clickable drill-downs                                  | ⏳                       |
 | 6     | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ⏳                       |
 
@@ -100,8 +100,9 @@ for the API integration tests. To run them against your own Postgres instead, se
 | Shared   | `packages/shared` — TypeScript source consumed directly (money, dates, enums, Zod primitives, defaults)                                                                                                             |
 | Tooling  | ESLint 10 flat config + typescript-eslint (type-checked), Prettier 3 + Tailwind plugin, Vitest 5, tsup, tsx                                                                                                         |
 
-Planned but not yet installed (install when the phase needs them): TanStack Table (Phase 3),
-date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase 6).
+Not used on purpose: TanStack Table (v9's new API added nothing for a month-scoped grid filtered
+on the server — the grid is hand-built) and date-fns (shared calendar helpers cover it).
+Planned: SheetJS or similar (Phase 6).
 
 ---
 
@@ -119,10 +120,11 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
 │   ├── money.ts                  ← formatBRL, formatMoneyParts, parseBRL, allocateCents (+ tests)
 │   ├── dates.ts                  ← calendar-date & month helpers, addDays/addMonthsToDate (+ tests)
 │   ├── invoices.ts               ← invoice engine: resolveInvoiceCycle/InstallmentCycle, invoiceStatus (+ tests)
+│   ├── recurrence.ts             ← recurring dates: nthOccurrence, occurrencesBetween, nextOccurrence (+ tests)
 │   ├── enums.ts                  ← domain enums + pt-BR labels (mirror of Prisma enums)
 │   ├── palette.ts                ← tone keys (700 · 300 · 900 · 500 · neutral) + pt-BR labels
 │   ├── category-icons.ts         ← icon keys allowed for categories
-│   ├── schemas/                  ← Zod: primitives, auth, household, category, account, card (+ tests)
+│   ├── schemas/                  ← Zod: primitives, auth, household, category, account, card, transaction, recurring (+ tests)
 │   ├── dto.ts                    ← response shapes (MeDto, AccountDto, CardDto, InvoiceSummaryDto…)
 │   └── defaults/categories.ts    ← default pt-BR category tree
 ├── apps/api
@@ -135,9 +137,11 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
 │   └── src
 │       ├── server.ts · app.ts    ← bootstrap, middleware order, graceful shutdown
 │       ├── config/env.ts         ← Zod-validated env (fails fast)
-│       ├── routes/               ← auth, invites, household, categories, accounts, cards (+ invoices, card-purchases), health
+│       ├── routes/               ← auth, invites, household, categories, accounts, cards (+ invoices, card-purchases),
+│       │                           transactions, recurring, health
 │       ├── middleware/           ← auth (loadSession/require*/scopeOf), origin-check, rate-limit, error-handler
-│       ├── domain/               ← services: auth, households, invites, categories, accounts, cards/ (card, invoice, purchase)
+│       ├── domain/               ← services: auth, households, invites, categories, accounts, cards/ (card, invoice, purchase),
+│       │                           transactions/, recurring/ (lazy idempotent generation)
 │       ├── lib/                  ← prisma, logger, http-error, password, tokens, params, db-dates, enum-parity
 │       ├── types/express.d.ts    ← req.auth typing
 │       ├── test/                 ← global-setup (test DB), helpers, *.test.ts per area
@@ -158,10 +162,11 @@ date-fns + `@date-fns/tz` (Phase 3 grid/date pickers). SheetJS or similar (Phase
         ├── components/month-picker/ · empty-state/ · member/ · layout/ (AppShell, AppHeader, Sidebar,
         │                           BottomNav + MoreSheet, BrandMark, PageHeader, nav-link-class)
         ├── features/             ← auth/, dashboard/, accounts/, cards/, categories/, settings/, household/ (api hooks),
-        │                           quick-add/, placeholder/, design-showcase/ (+ its static demo-data)
+        │                           transactions/ (grid, list, sheets, recurring), command-palette/, quick-add/,
+        │                           placeholder/, design-showcase/ (+ its static demo-data)
         └── lib/                  ← api fetch, query client + keys, session-cache, form-errors, undo-toast, theme,
-                                    privacy, month (MonthProvider), brand (APP_NAME), storage, media queries,
-                                    css colors
+                                    privacy, month (MonthProvider), brand (APP_NAME), ledger (invalidateLedger),
+                                    storage, media queries, css colors
 ```
 
 ---
@@ -310,7 +315,7 @@ the purchase rolls to the next cycle (one invoice per card per due month).
 1. A credit-card purchase is automatically assigned to the right invoice (purchase date vs closing day — rule above).
 2. Each invoice shows up automatically in "Contas a pagar" on its due date.
 3. Paying an invoice creates a TRANSFER from the linked account → updates the account balance and frees the card limit.
-4. Recurring rules feed both the monthly forecast and "Contas a pagar" (PENDING occurrences, idempotent per `occurrenceDate`).
+4. Recurring rules feed both the monthly forecast and "Contas a pagar" (PENDING occurrences, idempotent per `occurrenceDate`). Generation is lazy: listing transactions/rules/cards materializes account occurrences up to the end of next month (or the month being viewed, max 12 months ahead), card subscriptions once their day arrives, and turns auto-confirmed ones PAID on their day.
 5. Category budgets compare against real spending in real time and raise dashboard alerts at **80%** and **100%** (`BUDGET_ALERT_THRESHOLDS_BPS`).
 6. The dashboard is fully clickable: category slice, card, member or month → transactions grid pre-filtered.
 7. "Pago por": every expense/income records who paid or received it — information for the couple, never a debt (everything is shared).
@@ -318,31 +323,35 @@ the purchase rolls to the next cycle (one invoice per card per due month).
 
 ---
 
-## API (Phases 1–2)
+## API (Phases 1–3)
 
 All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 🔒 = session,
 🏠 = active household, 👑 = household owner, ⏱ = rate-limited.
 
-| Method & path                                                                                 | Auth               | Purpose                                                                                                              |
-| --------------------------------------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`                                                                                 | —                  | Liveness + DB probe                                                                                                  |
-| `POST /auth/register`                                                                         | ⏱                  | Create user + household (default categories), or join one with `inviteToken`; starts session                         |
-| `POST /auth/login` · `POST /auth/logout`                                                      | ⏱ · —              | Session start (fresh token) / end (server-side)                                                                      |
-| `GET /auth/me`                                                                                | 🔒                 | `MeDto`: user, active household, members, memberships                                                                |
-| `POST /auth/switch-household`                                                                 | 🔒                 | Change the session's active household                                                                                |
-| `GET /invites/:token` · `POST /invites/:token/accept`                                         | ⏱ · 🔒⏱            | Public invite preview · accept (e-mail must match)                                                                   |
-| `PATCH /household`                                                                            | 🏠👑               | Household name                                                                                                       |
-| `PATCH /household/members/me`                                                                 | 🏠                 | Own display name & colour (distinct per household)                                                                   |
-| `GET/POST /household/invites` · `DELETE /household/invites/:id`                               | 🏠 (👑 for writes) | Pending invites; create (link shown once, 7 days); revoke                                                            |
-| `GET/POST /categories` · `PATCH /categories/:id`                                              | 🏠                 | List (`?includeArchived=true`), create, edit                                                                         |
-| `POST /categories/:id/archive` · `/unarchive` · `DELETE /categories/:id`                      | 🏠                 | Archive cascades to children; delete only if unused                                                                  |
-| `GET/POST /accounts` · `PATCH /accounts/:id`                                                  | 🏠                 | List with derived `balanceCents`, create, edit                                                                       |
-| `POST /accounts/:id/archive` · `/unarchive` · `DELETE /accounts/:id`                          | 🏠                 | Delete only if no movements/rules                                                                                    |
-| `GET/POST /cards` · `GET/PATCH /cards/:id`                                                    | 🏠                 | Cards with derived `usedCents`/`availableCents` and `currentInvoice`; closing/due day edits only affect new invoices |
-| `POST /cards/:id/archive` · `/unarchive` · `DELETE /cards/:id`                                | 🏠                 | Archived cards refuse purchases; delete only if unused                                                               |
-| `GET /cards/:id/invoices` · `GET /invoices/:id`                                               | 🏠                 | Invoice timeline (future installments included) · invoice detail with its items                                      |
-| `POST /card-purchases`                                                                        | 🏠                 | Purchase or refund; `installments` 1–24 → plan + one row per installment; warns on a paid invoice                    |
-| `PATCH/DELETE /card-purchases/:id?scope=one\|following\|all` · `POST /card-purchases/restore` | 🏠                 | Edit text/category/paid-by · soft delete (returns ids) · "Desfazer"                                                  |
+| Method & path                                                                                      | Auth               | Purpose                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                                                                                      | —                  | Liveness + DB probe                                                                                                                             |
+| `POST /auth/register`                                                                              | ⏱                  | Create user + household (default categories), or join one with `inviteToken`; starts session                                                    |
+| `POST /auth/login` · `POST /auth/logout`                                                           | ⏱ · —              | Session start (fresh token) / end (server-side)                                                                                                 |
+| `GET /auth/me`                                                                                     | 🔒                 | `MeDto`: user, active household, members, memberships                                                                                           |
+| `POST /auth/switch-household`                                                                      | 🔒                 | Change the session's active household                                                                                                           |
+| `GET /invites/:token` · `POST /invites/:token/accept`                                              | ⏱ · 🔒⏱            | Public invite preview · accept (e-mail must match)                                                                                              |
+| `PATCH /household`                                                                                 | 🏠👑               | Household name                                                                                                                                  |
+| `PATCH /household/members/me`                                                                      | 🏠                 | Own display name & colour (distinct per household)                                                                                              |
+| `GET/POST /household/invites` · `DELETE /household/invites/:id`                                    | 🏠 (👑 for writes) | Pending invites; create (link shown once, 7 days); revoke                                                                                       |
+| `GET/POST /categories` · `PATCH /categories/:id`                                                   | 🏠                 | List (`?includeArchived=true`), create, edit                                                                                                    |
+| `POST /categories/:id/archive` · `/unarchive` · `DELETE /categories/:id`                           | 🏠                 | Archive cascades to children; delete only if unused                                                                                             |
+| `GET/POST /accounts` · `PATCH /accounts/:id`                                                       | 🏠                 | List with derived `balanceCents`, create, edit                                                                                                  |
+| `POST /accounts/:id/archive` · `/unarchive` · `DELETE /accounts/:id`                               | 🏠                 | Delete only if no movements/rules                                                                                                               |
+| `GET/POST /cards` · `GET/PATCH /cards/:id`                                                         | 🏠                 | Cards with derived `usedCents`/`availableCents` and `currentInvoice`; closing/due day edits only affect new invoices                            |
+| `POST /cards/:id/archive` · `/unarchive` · `DELETE /cards/:id`                                     | 🏠                 | Archived cards refuse purchases; delete only if unused                                                                                          |
+| `GET /cards/:id/invoices` · `GET /invoices/:id`                                                    | 🏠                 | Invoice timeline (future installments included) · invoice detail with its items                                                                 |
+| `POST /card-purchases`                                                                             | 🏠                 | Purchase or refund; `installments` 1–24 → plan + one row per installment; warns on a paid invoice                                               |
+| `PATCH/DELETE /card-purchases/:id?scope=one\|following\|all` · `POST /card-purchases/restore`      | 🏠                 | Edit text/category/paid-by · soft delete (returns ids) · "Desfazer"                                                                             |
+| `GET /transactions?month=&kind=&categoryId=&accountId=&creditCardId=&paidById=&q=`                 | 🏠                 | Month rows (account + card) with totals; a parent category matches its children                                                                 |
+| `POST /transactions` · `PATCH /transactions/:id`                                                   | 🏠                 | Expense / income / transfer on accounts; pending bills with due date; mark paid (paidDate) · card rows only take text edits (`CARD_ROW_LOCKED`) |
+| `DELETE /transactions/:id?scope=` · `POST /transactions/restore`                                   | 🏠                 | Soft delete (installments honour the scope) · "Desfazer"                                                                                        |
+| `GET/POST /recurring-rules` · `PATCH /recurring-rules/:id` · `POST …/pause` · `/resume` · `DELETE` | 🏠                 | Rules on an account (pending occurrences) or card (purchases); edits hit pending occurrences from today on; delete keeps paid history           |
 
 Auth details: Argon2id passwords (8–128 chars); unknown e-mails are verified against a dummy
 hash (same timing); sessions last 30 days, slide forward at most once a day, and are deleted on
@@ -543,6 +552,13 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
 | 2026-10-04 | Motion: 120–220ms, fade + small rise, rulers grow; spring "pop" removed                                                              | A technical drawing should feel precise, not bouncy                                                              |
 | 2026-10-04 | `.blueprint` as a Tailwind `@utility` on `::after`; `:where(.blueprint)` sets `position: relative` at zero specificity               | No extra markup; `fixed`/`sticky` utilities still win                                                            |
 | 2026-10-04 | Fonts `@fontsource/barlow` + `@fontsource/barlow-condensed` (400–700 / 500–600)                                                      | Self-hosted like before; Fraunces/Manrope/Geist removed                                                          |
+| 2026-10-04 | Installment split via `allocateCents` (extra cents one each to the first installments); refunds = card credits, never split          | Never loses a cent; matches the bank statement                                                                   |
+| 2026-10-04 | Closing-day change: snapshots kept; new cycle starts at the last closing; a due month already taken rolls to the next cycle          | One invoice per card per due month, gap-free periods                                                             |
+| 2026-10-04 | Card rows are edited only in text fields; value/date changes = delete + re-launch                                                    | Re-assigning invoices of a plan silently would surprise; explicit is safer                                       |
+| 2026-10-04 | Recurring generation is lazy (on list), idempotent; account occurrences up to next month, card ones when due                         | No job scheduler to operate; forecast and bills always populated                                                 |
+| 2026-10-04 | Grid hand-built instead of TanStack Table v9                                                                                         | Server-side filters, month-sized data; full control of keyboard editing                                          |
+| 2026-10-04 | Ctrl/⌘+K = command palette (launch, jump, search); "+ Lançamento" and the FAB open quick add directly                                | One shortcut for everything, the fastest path stays one tap                                                      |
+| 2026-10-04 | `DATABASE_POOL_SIZE` (default 10); tests on the in-memory DB use 1                                                                   | PGlite serves one connection reliably — fixed flaky "Connection terminated"                                      |
 
 ---
 
@@ -643,19 +659,49 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
   and 375px (no overflow): cards page, invoice switching, purchase sheet preview, quick add saving
   a 3x purchase into the right invoice, dashboard panel.
 
-## Next step — Phase 3 (transactions grid, quick add, command palette, recurring rules)
+## Phase 3 — what was delivered (2026-10-04)
 
-1. **API — transactions:** list with filters (month, type, category, account/card, status, text),
-   totals, create/edit/soft-delete/restore for account rows (expense, income, transfer); card rows
-   keep going through the card-purchase rules; keyset pagination.
-2. **Web — "Lançamentos" grid** (TanStack Table): inline editing, keyboard navigation, sticky
-   total, filters as chips (pattern in the showcase), grouping by day/category, mobile list view.
-3. **Quick add** saves account entries for real; inline "Criar" for cards too (rule 8).
-4. **Command palette** (Ctrl/⌘+K): search transactions and jump to screens, with "Lançar" first.
-5. **Recurring rules:** CRUD + idempotent generation of PENDING occurrences
-   (`(recurringRuleId, occurrenceDate)` unique) feeding the forecast and "Contas a pagar".
-6. Tests for filters/totals, transfers and balances, recurrence idempotency.
+- **Shared:** transaction & recurring-rule schemas (shapes mirror the DB CHECKs), `TransactionDto`,
+  totals and `RecurringRuleDto`; recurrence engine (monthly on the 31st without drift, weekly,
+  yearly Feb 29, intervals, end dates) — 4 more unit tests.
+- **API:** `/transactions` (month list with filters and totals — card credits lower spending,
+  transfers are neither income nor expense; create/edit/soft-delete/restore; pending ↔ paid with
+  `paidDate`; card rows locked to text fields) and `/recurring-rules` (CRUD, pause/resume,
+  edits applied to pending occurrences from today, delete keeps history) with lazy idempotent
+  generation (`ensureOccurrences`). 12 integration tests. `DATABASE_POOL_SIZE` env (tests use 1).
+- **Web — "Lançamentos"** (`/lancamentos`): desktop spreadsheet grid (hand-built, `role="grid"`):
+  arrow keys move between cells, Enter/F2/double click edits in place (description, value, date,
+  category, account, paid-by), status toggles pending ↔ paid, card rows locked with a hint, row
+  menu with scoped delete + Desfazer, sticky totals; the design's inline "next row" bar (Enter
+  adds, accounts or cards, category decides expense/income); kind filters, drill-down chips from
+  the URL (`?categoryId=`, `?accountId=`, `?creditCardId=`, `?kind=`), search; phones get a list
+  grouped by day. Full form sheet for transfers, pending bills (due date) and notes.
+  **Recorrências** view: list with frequency text, next date, pause/resume, delete (confirm), sheet.
+- **Quick add** saves everything for real (account entries and card purchases) with Desfazer.
+- **Command palette** (Ctrl/⌘+K, header "Lançar ou buscar", search icon on phones): launch quick
+  add / detailed form / card purchase, jump to any screen, search the month's transactions.
+- **Dashboard:** real Receitas/Despesas (clickable → filtered grid), forecast = balance + to
+  receive − to pay this month (invoices join in Phase 4), budgets with real spending per category
+  (children roll up; card credits subtract) and 80%/100% tags, rows link to the filtered grid.
+- **Seed:** account movements this month + transfer; recurring rules now materialize.
+- **Checks:** `pnpm check` green (69 shared + 65 API tests). Verified in headless Chrome: grid,
+  inline add, in-place edit, recurring view, palette search, dashboard numbers, 375px list (no
+  overflow).
 
-Known follow-ups: main JS chunk is ~242 KB gzip — split routes (`lazy`) and the quick-add form
+## Next step — Phase 4 (bills to pay, invoice payment, incomes)
+
+1. **API — bills projection** ("Contas a pagar", not a table): PENDING rows with `dueDate` +
+   unpaid invoices (total − paid > 0) by due date; overdue / today / this week / later; totals.
+2. **API — invoice payment:** `POST /invoices/:id/payments` = TRANSFER from an account into the
+   invoice (full or partial, date); undo; invoice status/limit/balance follow (already derived).
+3. **Web — "Contas a pagar":** list grouped by urgency + month calendar; pay a bill (choose
+   account, date) or an invoice (default: card's payment account) in one tap; overdue in ink
+   frame + word.
+4. **Web — "Receitas":** month incomes (received / to receive), by person and category; mark
+   received.
+5. **Dashboard:** "Próximas contas" (design's date boxes) and forecast including invoices due.
+6. Tests: projection ordering/totals, partial payments, overpayment, limits after payment.
+
+Known follow-ups: main JS chunk is ~262 KB gzip — split routes (`lazy`) and the quick-add form
 in the Phase 6 performance pass. Password reset / change e-mail not built yet (no e-mail
 infrastructure) — consider for Phase 6. Git: `origin` = github.com/derekzinnn/Spendt (commit after each phase).

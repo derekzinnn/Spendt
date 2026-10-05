@@ -12,4 +12,7 @@ export const queryKeys = {
   cards: ['cards'] as const,
   cardInvoices: (cardId: string) => ['cards', cardId, 'invoices'] as const,
   invoice: (invoiceId: string) => ['cards', 'invoice', invoiceId] as const,
+  transactions: ['transactions'] as const,
+  transactionList: (query: object) => ['transactions', query] as const,
+  recurring: ['recurring'] as const,
 }

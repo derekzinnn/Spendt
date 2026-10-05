@@ -14,6 +14,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch } from '@/lib/api'
+import { invalidateLedger } from '@/lib/ledger'
 import { queryKeys } from '@/lib/query-keys'
 
 /** All cards with derived usage and the current invoice, archived included. */
@@ -41,12 +42,12 @@ export function useInvoice(invoiceId: string | null | undefined) {
   })
 }
 
-/** Every card mutation refreshes cards, invoices and invoice details (one prefix). */
+/** Every card mutation touches the ledger: cards, invoices, transactions, balances. */
 function useCardMutation<TVariables, TResult>(fn: (variables: TVariables) => Promise<TResult>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.cards }),
+    onSettled: () => invalidateLedger(queryClient),
   })
 }
 

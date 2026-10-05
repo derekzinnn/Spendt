@@ -28,7 +28,10 @@ import { useHouseholdContext } from '@/features/auth/api'
 import { useCards, useCreatePurchase, useDeletePurchase } from '@/features/cards/api'
 import { announcePurchase, useInvoicePreview } from '@/features/cards/purchase-helpers'
 import { useCategories, useCreateCategory } from '@/features/categories/api'
+import { useCreateTransaction, useDeleteTransaction } from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
+import { errorMessage } from '@/lib/form-errors'
+import { undoToast } from '@/lib/undo-toast'
 
 const quickAddSchema = z.object({
   type: z.enum(['EXPENSE', 'INCOME']),
@@ -58,8 +61,8 @@ const pickClass = (selected: boolean) =>
 
 /**
  * The five-second quick add: amount first, then category, account and who paid.
- * Uses the household's real categories, accounts, cards and members. Card purchases are saved
- * for real (with installments); account entries are a preview until Phase 3.
+ * Uses the household's real categories, accounts, cards and members; card purchases can be
+ * split in installments. Everything is saved for real, with "Desfazer".
  */
 export function QuickAddForm({
   onDone,
@@ -79,6 +82,8 @@ export function QuickAddForm({
   const cardsQuery = useCards()
   const createPurchase = useCreatePurchase()
   const removePurchase = useDeletePurchase()
+  const createTransaction = useCreateTransaction()
+  const removeTransaction = useDeleteTransaction()
   const [query, setQuery] = useState('')
   const [installments, setInstallments] = useState(1)
 
@@ -150,7 +155,7 @@ export function QuickAddForm({
             description: 'Ajuste ícone e tom depois em Categorias.',
           })
         },
-        onError: (error) => toast.error(error.message),
+        onError: (error) => toast.error(errorMessage(error)),
       },
     )
   }
@@ -180,18 +185,34 @@ export function QuickAddForm({
             setInstallments(1)
             onDone?.()
           },
-          onError: (error) => toast.error(error.message),
+          onError: (error) => toast.error(errorMessage(error)),
         },
       )
       return
     }
     const category = active.find((c) => c.id === values.categoryId)
-    toast(`Lançamento salvo · ${formatBRL(values.amountCents ?? 0)}`, {
-      description: `${category?.name ?? '—'} · prévia: lançamentos em conta chegam na Fase 3`,
-      action: { label: 'Desfazer', onClick: () => toast('Lançamento desfeito') },
-    })
-    reset({ ...values, amountCents: null, categoryId: '', description: '' })
-    onDone?.()
+    createTransaction.mutate(
+      {
+        type: values.type,
+        amountCents: values.amountCents ?? 0,
+        date: todayIso(),
+        description: values.description.trim() || (category?.name ?? 'Lançamento'),
+        categoryId: values.categoryId,
+        accountId: values.accountId,
+        paidById: values.paidById || null,
+      },
+      {
+        onSuccess: (row) => {
+          undoToast(`${formatBRL(row.amountCents)} · ${category?.name ?? row.description}`, {
+            description: values.type === 'INCOME' ? 'Receita lançada' : 'Despesa lançada',
+            onUndo: () => removeTransaction.mutate({ id: row.id }),
+          })
+          reset({ ...values, amountCents: null, categoryId: '', description: '' })
+          onDone?.()
+        },
+        onError: (error) => toast.error(errorMessage(error)),
+      },
+    )
   })
 
   /** Enter saves from the amount and description fields (when everything is filled). */
@@ -419,7 +440,7 @@ export function QuickAddForm({
         <Button
           type="submit"
           size="lg"
-          disabled={!canSave || createPurchase.isPending}
+          disabled={!canSave || createPurchase.isPending || createTransaction.isPending}
           className="px-5 text-[15px]"
         >
           Salvar

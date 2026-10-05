@@ -2,41 +2,51 @@ import { Dialog } from 'radix-ui'
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { overlayClassName } from '@/components/ui/sheet'
+import { CommandPalette } from '@/features/command-palette/CommandPalette'
 
 import { QuickAddForm } from './QuickAddForm'
 
 interface QuickAddContextValue {
   open: boolean
   setOpen: (open: boolean) => void
+  /** The Ctrl/⌘+K palette: launch, jump, search. */
+  setPaletteOpen: (open: boolean) => void
 }
 
 const QuickAddContext = createContext<QuickAddContextValue | null>(null)
 
 /**
- * Quick add is reachable from anywhere: the mobile square button, the header and Ctrl/⌘+K.
- * (Phase 3 turns Ctrl/⌘+K into the full command palette.)
+ * Quick add is reachable from anywhere: the mobile square button, "+ Lançamento" and the
+ * Ctrl/⌘+K palette (which also jumps to screens and searches transactions).
  *
  * A blueprint dialog: docked to the bottom on phones (one-thumb reach), centred on desktop.
  */
 export function QuickAddProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        setOpen((current) => !current)
+        setOpen(false)
+        setPaletteOpen((current) => !current)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const value = useMemo(() => ({ open, setOpen }), [open])
+  const value = useMemo(() => ({ open, setOpen, setPaletteOpen }), [open])
 
   return (
     <QuickAddContext value={value}>
       {children}
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onQuickAdd={() => setOpen(true)}
+      />
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className={overlayClassName} />

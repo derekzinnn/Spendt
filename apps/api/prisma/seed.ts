@@ -171,15 +171,27 @@ async function main() {
         holderId: null,
         initial: 4100,
       })
-      await account({
+      const savings = await account({
         name: 'Reserva',
         type: 'SAVINGS',
         color: '700',
         holderId: null,
         initial: 15000,
       })
-      await account({ name: 'Carteira', type: 'CASH', color: '300', holderId: null, initial: 180 })
-      await account({ name: 'VR', type: 'BENEFIT', color: '500', holderId: me.id, initial: 640 })
+      const wallet = await account({
+        name: 'Carteira',
+        type: 'CASH',
+        color: '300',
+        holderId: null,
+        initial: 180,
+      })
+      const vr = await account({
+        name: 'VR',
+        type: 'BENEFIT',
+        color: '500',
+        holderId: me.id,
+        initial: 640,
+      })
 
       // ── Credit cards ──
       const myCard = await tx.creditCard.create({
@@ -346,6 +358,84 @@ async function main() {
         categoryName: 'Moradia › Manutenção',
         paidById: me.id,
         installments: 12,
+      })
+
+      // ── Account movements this month (never before the opening-balance date) ──
+      const opening = firstDayOfMonth(currentMonthKey())
+      const recent = (daysAgo: number) => {
+        const date = addDays(today, -daysAgo)
+        return date < opening ? opening : date
+      }
+      const movements = [
+        {
+          type: 'EXPENSE' as const,
+          description: 'Padaria',
+          amount: 23.5,
+          daysAgo: 0,
+          categoryName: 'Mercado › Padaria',
+          accountId: wallet.id,
+          paidById: me.id,
+        },
+        {
+          type: 'EXPENSE' as const,
+          description: 'Almoço',
+          amount: 42.9,
+          daysAgo: 1,
+          categoryName: 'Restaurantes › Restaurante',
+          accountId: vr.id,
+          paidById: me.id,
+        },
+        {
+          type: 'EXPENSE' as const,
+          description: 'Uber',
+          amount: 18.75,
+          daysAgo: 2,
+          categoryName: 'Transporte › Aplicativos',
+          accountId: herBank.id,
+          paidById: her.id,
+        },
+        {
+          type: 'INCOME' as const,
+          description: 'Freela site',
+          amount: 1200,
+          daysAgo: 3,
+          categoryName: 'Freela',
+          accountId: myBank.id,
+          paidById: me.id,
+        },
+      ]
+      for (const m of movements) {
+        const date = recent(m.daysAgo)
+        await tx.transaction.create({
+          data: {
+            householdId,
+            type: m.type,
+            status: 'PAID',
+            amountCents: reais(m.amount),
+            date: toDbDate(date),
+            paidDate: toDbDate(date),
+            description: m.description,
+            categoryId: category(m.categoryName),
+            accountId: m.accountId,
+            paidById: m.paidById,
+            createdById: m.paidById,
+          },
+        })
+      }
+      await tx.transaction.create({
+        data: {
+          householdId,
+          type: 'TRANSFER',
+          status: 'PAID',
+          amountCents: reais(500),
+          date: toDbDate(recent(1)),
+          paidDate: toDbDate(recent(1)),
+          description: 'Guardar na reserva',
+          accountId: joint.id,
+          toAccountId: savings.id,
+          paidById: me.id,
+          createdById: me.id,
+        },
       })
 
       // ── Recurring rules ──

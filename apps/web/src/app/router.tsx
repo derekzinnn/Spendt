@@ -10,6 +10,7 @@ import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { TransactionsPage } from '@/features/transactions/TransactionsPage'
 
 import { BootScreen } from './BootScreen'
 import { guestOnlyLoader, requireSessionLoader, sessionAwareLoader } from './loaders'
@@ -25,6 +26,7 @@ const BUILT: Record<string, RouteObject['element']> = {
   [ROUTES.dashboard]: <DashboardPage />,
   [ROUTES.accounts]: <AccountsPage />,
   [ROUTES.cards]: <CardsPage />,
+  [ROUTES.transactions]: <TransactionsPage />,
   [ROUTES.categories]: <CategoriesPage />,
   [ROUTES.settings]: <SettingsPage />,
 }

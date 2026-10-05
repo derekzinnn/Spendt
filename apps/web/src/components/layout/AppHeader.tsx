@@ -24,7 +24,7 @@ export function AppHeader({
   monthly: boolean
   onOpenMore: () => void
 }) {
-  const { setOpen } = useQuickAdd()
+  const { setOpen, setPaletteOpen } = useQuickAdd()
   const { month, setMonth } = useMonth()
 
   return (
@@ -44,7 +44,7 @@ export function AppHeader({
       <div className="hidden items-center gap-3 desk:flex">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => setPaletteOpen(true)}
           className="flex h-(--control-h) min-w-52 cursor-pointer items-center gap-2 border border-border px-2.5 text-[13px] text-muted-foreground transition-colors duration-150 hover:border-steel"
         >
           <Search className="size-3.5" />
@@ -60,6 +60,14 @@ export function AppHeader({
       </div>
 
       <div className="flex items-center gap-1 desk:hidden">
+        <Button
+          variant="quiet"
+          size="icon"
+          aria-label="Lançar ou buscar"
+          onClick={() => setPaletteOpen(true)}
+        >
+          <Search />
+        </Button>
         <PrivacyToggle />
         <Button variant="secondary" size="icon" aria-label="Mais seções" onClick={onOpenMore}>
           <Menu />

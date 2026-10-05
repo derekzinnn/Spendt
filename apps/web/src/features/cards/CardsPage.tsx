@@ -22,7 +22,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 
 import { ROUTES } from '@/app/navigation'
@@ -512,6 +512,7 @@ export function CardsPage() {
     open: false,
   })
   const [purchaseOpen, setPurchaseOpen] = useState(false)
+  const [params, setParams] = useSearchParams()
 
   const active = useMemo(() => data?.filter((c) => !c.archivedAt) ?? [], [data])
   const archived = useMemo(() => data?.filter((c) => c.archivedAt) ?? [], [data])
@@ -592,8 +593,12 @@ export function CardsPage() {
         usedColors={usedColors}
       />
       <PurchaseSheet
-        open={purchaseOpen}
-        onOpenChange={setPurchaseOpen}
+        // ?compra=1 (from the command palette) opens the purchase sheet.
+        open={purchaseOpen || params.get('compra') !== null}
+        onOpenChange={(open) => {
+          if (!open && params.get('compra')) setParams({}, { replace: true })
+          setPurchaseOpen(open)
+        }}
         cards={active}
         cardId={selected?.id}
       />

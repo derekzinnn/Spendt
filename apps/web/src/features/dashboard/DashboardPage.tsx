@@ -1,4 +1,11 @@
-import { capitalize, formatBRL, formatMonthLabel, monthName, parseMonthKey } from '@spendly/shared'
+import {
+  capitalize,
+  currentMonthKey,
+  formatBRL,
+  formatMonthLabel,
+  monthName,
+  parseMonthKey,
+} from '@spendly/shared'
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -10,7 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
 import { ROUTES } from '@/app/navigation'
 import { CategoryIcon } from '@/components/category/CategoryBadge'
@@ -30,8 +37,11 @@ import { invoiceDates } from '@/features/cards/card-meta'
 import { InvoiceStatusTag } from '@/features/cards/InvoiceStatusTag'
 import { useCategories } from '@/features/categories/api'
 import { useInvites } from '@/features/household/api'
+import { useTransactions } from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
 import { useMonth } from '@/lib/month'
+
+import { pendingSplit, spendingByCategory } from './month-summary'
 
 interface Step {
   id: string
@@ -68,41 +78,71 @@ function CardHead({ title, aside }: { title: string; aside?: ReactNode }) {
 
 function Kpis() {
   const { month } = useMonth()
+  const navigate = useNavigate()
   const accounts = useAccounts()
+  const transactions = useTransactions({ month })
   const active = accounts.data?.filter((a) => !a.archivedAt) ?? []
   const balance = active.reduce((sum, a) => sum + a.balanceCents, 0)
-  const short = monthName(parseMonthKey(month).month, 'short')
+  const totals = transactions.data?.totals
+  const pending = pendingSplit(transactions.data?.items ?? [])
+  const isCurrent = month === currentMonthKey()
+  const loading = (value: ReactNode, pendingQuery: boolean) =>
+    pendingQuery ? <Skeleton className="my-1 h-7 w-36" /> : value
 
   return (
     <KpiGrid>
       <KpiCell
         icon={<ArrowUpRight />}
         label="Receitas"
-        value={<Money cents={0} size="xl" tone="neutral" />}
-        sub={`nada lançado em ${short}`}
+        value={loading(
+          <Money cents={totals?.incomeCents ?? 0} size="xl" tone="neutral" />,
+          transactions.isPending,
+        )}
+        sub={
+          pending.incomeCents > 0
+            ? `${formatBRL(pending.incomeCents)} ainda a receber`
+            : 'tudo recebido'
+        }
+        onClick={() => void navigate(`${ROUTES.transactions}?kind=income`)}
       />
       <KpiCell
         icon={<ArrowDownRight />}
         label="Despesas"
-        value={<Money cents={0} size="xl" tone="neutral" />}
-        sub="lançamentos chegam na Fase 3"
+        value={loading(
+          <Money cents={totals?.expenseCents ?? 0} size="xl" tone="neutral" />,
+          transactions.isPending,
+        )}
+        sub={
+          pending.expenseCents > 0
+            ? `${formatBRL(pending.expenseCents)} ainda a pagar`
+            : 'contas e cartões do mês'
+        }
+        onClick={() => void navigate(`${ROUTES.transactions}?kind=expense`)}
       />
       <KpiCell
         label="Saldo nas contas"
-        value={
-          accounts.isPending ? (
-            <Skeleton className="my-1 h-7 w-36" />
-          ) : (
-            <Money cents={balance} size="xl" tone="neutral" />
-          )
-        }
+        value={loading(<Money cents={balance} size="xl" tone="neutral" />, accounts.isPending)}
         sub="só o que já foi pago"
       />
       <KpiCell
         emphasis
         label="Previsão fim do mês"
-        value={<span className="font-display text-[1.875rem] leading-[1.1]">—</span>}
-        sub="inclui pendentes e recorrentes · Fase 5"
+        value={
+          isCurrent ? (
+            loading(
+              <Money
+                cents={balance + pending.incomeCents - pending.expenseCents}
+                size="xl"
+                tone="neutral"
+                className="text-steel-800"
+              />,
+              transactions.isPending || accounts.isPending,
+            )
+          ) : (
+            <span className="font-display text-[1.875rem] leading-[1.1]">—</span>
+          )
+        }
+        sub={isCurrent ? 'saldo + a receber − a pagar (faturas na Fase 4)' : 'só para o mês atual'}
       />
     </KpiGrid>
   )
@@ -216,10 +256,11 @@ function GettingStarted() {
 function Budgets() {
   const { month } = useMonth()
   const categories = useCategories()
+  const transactions = useTransactions({ month })
   const budgeted = (categories.data ?? [])
     .filter((c) => !c.archivedAt && c.kind === 'EXPENSE' && c.monthlyBudgetCents !== null)
     .sort((a, b) => (b.monthlyBudgetCents ?? 0) - (a.monthlyBudgetCents ?? 0))
-  const spent = 0 // Spending per category arrives with transactions (Phase 3).
+  const spentBy = spendingByCategory(transactions.data?.items ?? [], categories.data ?? [])
 
   return (
     <Card className="flex flex-col gap-2 p-5">
@@ -231,7 +272,7 @@ function Budgets() {
           </Link>
         }
       />
-      {categories.isPending ? (
+      {categories.isPending || transactions.isPending ? (
         <Skeleton className="h-40" />
       ) : budgeted.length === 0 ? (
         <p className="border-t border-border pt-3 text-sm text-muted-foreground">
@@ -245,27 +286,36 @@ function Budgets() {
         <ul className="flex flex-col">
           {budgeted.slice(0, 6).map((category) => {
             const budget = category.monthlyBudgetCents ?? 0
+            const spent = Math.max(0, spentBy.get(category.id) ?? 0)
+            const pct = budget > 0 ? Math.round((spent / budget) * 100) : 0
             return (
-              <li
-                key={category.id}
-                className="flex flex-col gap-1.5 border-b border-border px-1.5 py-2.5"
-              >
-                <div className="flex items-center gap-2 text-sm">
-                  <CategoryIcon icon={category.icon} color={category.color} size="sm" />
-                  <span className="flex-1 truncate">{category.name}</span>
-                  <Money cents={spent} size="sm" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Ruler
-                    value={spent}
-                    max={budget}
-                    className="flex-1"
-                    label={`${formatBRL(spent)} de ${formatBRL(budget)}`}
-                  />
-                  <span className="min-w-24 text-right text-[11px] text-muted-foreground">
-                    de {formatBRL(budget)}
+              <li key={category.id} className="border-b border-border">
+                <Link
+                  to={`${ROUTES.transactions}?categoryId=${category.id}`}
+                  className="flex flex-col gap-1.5 px-1.5 py-2.5 transition-colors hover:bg-steel/7"
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <CategoryIcon icon={category.icon} color={category.color} size="sm" />
+                    <span className="flex-1 truncate">{category.name}</span>
+                    {pct >= 80 ? (
+                      <Badge tone={pct >= 100 ? 'warning' : 'primary'}>
+                        {pct >= 100 ? 'estourou' : `${pct}%`}
+                      </Badge>
+                    ) : null}
+                    <Money cents={spent} size="sm" />
                   </span>
-                </div>
+                  <span className="flex items-center gap-2">
+                    <Ruler
+                      value={spent}
+                      max={budget}
+                      className="flex-1"
+                      label={`${formatBRL(spent)} de ${formatBRL(budget)}`}
+                    />
+                    <span className="min-w-24 text-right text-[11px] text-muted-foreground">
+                      de {formatBRL(budget)}
+                    </span>
+                  </span>
+                </Link>
               </li>
             )
           })}
