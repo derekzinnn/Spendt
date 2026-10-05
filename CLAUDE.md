@@ -31,8 +31,8 @@ packages and storage keys keep the `spendly` name.
 | **2** | Credit cards, invoice engine (closing/due logic), installments                        | ✅ **Done** (2026-10-04) |
 | **3** | Transactions grid ("Excel"), quick add, command palette, recurring rules              | ✅ **Done** (2026-10-04) |
 | **4** | Bills to pay (list + calendar), invoice payment, incomes                              | ✅ **Done** (2026-10-05) |
-| 5     | Dashboard, budgets and alerts, clickable drill-downs                                  | ⏭️ **Next**              |
-| 6     | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ⏳                       |
+| **5** | Dashboard, budgets and alerts, clickable drill-downs                                  | ✅ **Done** (2026-10-05) |
+| 6     | Import/export CSV/XLSX, polish, accessibility and performance pass                    | ⏭️ **Next**              |
 
 Between Phase 1 and 2 (2026-10-04) the **Casa design system** replaced Terracota/Grafite and the
 money model became **everything shared** — see
@@ -158,10 +158,12 @@ Planned: SheetJS or similar (Phase 6).
         ├── components/pickers/   ← ColorPicker, IconPicker
         ├── components/money/     ← Money, AmountInput
         ├── components/category/  ← CategoryBadge, CategoryIcon, icon registry, paletteStyle
-        ├── components/data/      ← KpiGrid/KpiCell, Ruler
+        ├── components/data/      ← KpiGrid/KpiCell, Ruler, Donut, TrendBars (hand-drawn SVG/boxes)
         ├── components/month-picker/ · empty-state/ · member/ · layout/ (AppShell, AppHeader, Sidebar,
         │                           BottomNav + MoreSheet, BrandMark, PageHeader, nav-link-class)
-        ├── features/             ← auth/, dashboard/, accounts/, cards/, categories/, settings/, household/ (api hooks),
+        ├── features/             ← auth/, dashboard/ (api + panels/: Kpis, BudgetAlerts, CategorySpending, Trend,
+        │                           UpcomingBills, CardsGlance, AccountsGlance, GettingStarted),
+        │                           accounts/, cards/, categories/, settings/, household/ (api hooks),
         │                           transactions/ (grid, list, sheets, recurring), bills/ (list, calendar, pay), incomes/,
         │                           command-palette/, quick-add/, placeholder/, design-showcase/ (+ its static demo-data)
         └── lib/                  ← api fetch, query client + keys, session-cache, form-errors, undo-toast, theme,
@@ -355,6 +357,7 @@ All JSON under `/api`. Writes require our Origin (or no browser Origin at all). 
 | `GET /bills?month=`                                                                                | 🏠                 | "Contas a pagar" as a projection: pending rows with a due date + unpaid invoices up to the end of that month (earlier overdue always included), bucketed overdue/today/week/later, with totals and what is already paid |
 | `POST /bills/:id/pay`                                                                              | 🏠                 | Confirms a pending row: account + paid date (undo = back to PENDING)                                                                                                                                                    |
 | `POST /invoices/:id/payments`                                                                      | 🏠                 | Pays (part of) an invoice: a TRANSFER account → invoice; refuses `OVERPAYMENT`, `INVOICE_PAID`, `INVOICE_EMPTY`                                                                                                         |
+| `GET /summary?month=`                                                                              | 🏠                 | The whole dashboard in one request: spending by category (children rolled up, share and budget usage), income × expense for the last 6 months, month totals and budget alerts at 80% / 100%                             |
 
 Auth details: Argon2id passwords (8–128 chars); unknown e-mails are verified against a dummy
 hash (same timing); sessions last 30 days, slide forward at most once a day, and are deleted on
@@ -566,6 +569,10 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
 | 2026-10-05 | Paying a bill = confirming the row (undo → PENDING); paying an invoice = one TRANSFER row (undo → soft delete)                       | Both stay single rows, so balance, limit and status need no extra state                                          |
 | 2026-10-05 | Partial invoice payments allowed, overpayment refused with the amount left                                                           | Matches how Brazilian cards work; keeps the invoice from going negative                                          |
 | 2026-10-05 | "Receitas" reuses `/transactions?kind=income` instead of its own endpoint                                                            | Same rows, same filters — one list to keep correct                                                               |
+| 2026-10-05 | The dashboard is **one** request (`GET /summary?month=`), aggregated in SQL                                                          | Three aggregates on the server beat a dozen round trips and keep the formulas in one place                       |
+| 2026-10-05 | Dashboard charts hand-drawn (SVG donut, box bars) instead of Recharts                                                                | Recharts stays lazy behind `/design`; the shell bundle doesn't grow and the style matches the drawing exactly    |
+| 2026-10-05 | Dashboard split into `panels/`, the page is assembly only                                                                            | Each panel fetches what it needs and can be reordered without touching the others                                |
+| 2026-10-05 | Spending by category rolls children into the parent and shows at most 5 slices + "Outros"                                            | A ring stops being readable past five; the list below still carries every number                                 |
 
 ---
 
@@ -723,19 +730,43 @@ current month steel-900. Recharts needs real colours → `useCssColors`; hand-dr
   and 375px: bills list and calendar, paying a bill (balance and totals follow, Desfazer offered),
   paying part of an invoice (remaining shown, card limit freed), incomes, dashboard.
 
-## Next step — Phase 5 (dashboard, budgets and alerts, drill-downs)
+## Phase 5 — what was delivered (2026-10-05)
 
-1. **API — monthly summary:** one endpoint with spending by category (children rolled up),
-   income × expense for the last 6 months, and budget usage, so the dashboard is one request.
-2. **Web — dashboard charts** (showcase already has the style): category donut with direct
-   labels + ranked list, 6-month bars (income outlined, expense filled, current month deepest),
-   both with a table view.
-3. **Budget alerts at 80% / 100%** (`BUDGET_ALERT_THRESHOLDS_BPS`) as the design's tag row at the
-   top of the dashboard, each tag opening the filtered grid.
-4. **Drill-downs everywhere:** category slice, card, person or month → `/lancamentos` pre-filtered
-   (the chips already exist).
-5. Tests: summary aggregation (rollup, card credits, transfers excluded), alert thresholds.
+- **Shared:** `CategorySpendDto` (spent, share in bps, budget and usage), `MonthPointDto`,
+  `BudgetAlertDto`, `DashboardSummaryDto`.
+- **API — `GET /summary?month=`** (`domain/summary/summary.service.ts`): three SQL aggregates —
+  spending by category with subcategories rolled into their parent (card credits subtract,
+  transfers and card-payment rows never count), income × expense for the last 6 months
+  (`to_char(date,'YYYY-MM')`, months without data filled in), and the month's totals. Budget
+  alerts come from `BUDGET_ALERT_THRESHOLDS_BPS` (80% / 100%), worst first. The whole dashboard
+  is one request. 5 integration tests (rollup & share, pending + card credits + transfers,
+  alert thresholds and ordering, the 6-month window with empty months, validation + isolation).
+- **Charts without a chart library:** `Donut` (168px, r 62, 16px ring, 2px gaps — slices are
+  dashes of one circle, hover dims the rest and the middle shows that slice) and `TrendBars`
+  (income outlined, expense filled, the month on screen in steel-900, bars `aria-hidden` with a
+  "Ver como tabela" table). Recharts stays out of the shell bundle, only `/design` loads it.
+- **Dashboard rebuilt as panels** (`features/dashboard/panels/`), the page itself is assembly:
+  alert strip → KPIs → "Gastos por categoria" (donut + ranked list with each budget's ruler,
+  top 5 + "Outros") → "Últimos 6 meses" → próximas contas + cartões → primeiros passos → contas.
+- **Everything is a door:** a slice or a list row, a budget tag, a card, an account and a month
+  label all open the pre-filtered grid (`/lancamentos?categoryId=…`), the month ones switching
+  the shared month first.
+- **Checks:** `pnpm check` green (69 shared + 78 API tests). Verified in headless Chrome at 1440px
+  and 375px, light and dark: donut and hover, trend bars + table view, alert tags, drill-down
+  landing on `?categoryId=` with the category chip, no horizontal overflow on the phone layout.
 
-Known follow-ups: main JS chunk is ~262 KB gzip — split routes (`lazy`) and the quick-add form
-in the Phase 6 performance pass. Password reset / change e-mail not built yet (no e-mail
-infrastructure) — consider for Phase 6. Git: `origin` = github.com/derekzinnn/Spendt (commit after each phase).
+## Next step — Phase 6 (import/export, polish, accessibility & performance)
+
+1. **Import CSV/XLSX:** bank and card statements → mapping screen (columns → date, description,
+   value), duplicate detection, category guess from past rows, everything confirmed before it
+   is written.
+2. **Export:** the month's grid and a whole year to CSV/XLSX (SheetJS or similar), plus a plain
+   backup of the household's data.
+3. **Performance:** split routes with `lazy` and lift the quick-add form out of the shell chunk
+   (main bundle is ~262 KB gzip today); check the grid with a heavy month.
+4. **Accessibility pass:** keyboard path through every screen, focus order in sheets/dialogs,
+   screen-reader text on the grid and charts, 44px targets, reduced motion.
+5. **Account care:** password change, and password reset / change e-mail once there is e-mail
+   infrastructure.
+
+Git: `origin` = github.com/derekzinnn/Spendt (commit after each phase).

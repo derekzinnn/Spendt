@@ -13,5 +13,6 @@ export function invalidateLedger(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: queryKeys.cards }),
     queryClient.invalidateQueries({ queryKey: queryKeys.recurring }),
     queryClient.invalidateQueries({ queryKey: queryKeys.bills }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.summaryAll }),
   ])
 }

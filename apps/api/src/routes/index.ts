@@ -12,6 +12,7 @@ import { healthRouter } from './health'
 import { householdRouter } from './household.routes'
 import { invitesRouter } from './invites.routes'
 import { recurringRouter } from './recurring.routes'
+import { summaryRouter } from './summary.routes'
 import { transactionsRouter } from './transactions.routes'
 
 export interface ApiOptions {
@@ -40,6 +41,7 @@ export function apiRouter(options: ApiOptions) {
   router.use('/transactions', requireHousehold, transactionsRouter())
   router.use('/recurring-rules', requireHousehold, recurringRouter())
   router.use('/bills', requireHousehold, billsRouter())
+  router.use('/summary', requireHousehold, summaryRouter())
 
   return router
 }

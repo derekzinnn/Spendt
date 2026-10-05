@@ -290,6 +290,58 @@ export interface BillsDto {
   totals: BillTotalsDto
 }
 
+/** Spending of one top-level category in a month (subcategories rolled up). */
+export interface CategorySpendDto {
+  categoryId: string
+  name: string
+  icon: CategoryIconKey
+  color: PaletteKey
+  /** Expenses − card credits, pending rows included (a budget is what the month costs). */
+  spentCents: number
+  budgetCents: number | null
+  /** Share of the budget used, in basis points (5000 = 50%); null without a budget. */
+  usageBps: number | null
+  /** Share of the month's spending, in basis points. */
+  shareBps: number
+}
+
+/** One month of the trend chart. Transfers count as neither income nor expense. */
+export interface MonthPointDto {
+  month: MonthKey
+  incomeCents: number
+  expenseCents: number
+}
+
+export interface BudgetAlertDto {
+  categoryId: string
+  name: string
+  icon: CategoryIconKey
+  color: PaletteKey
+  spentCents: number
+  budgetCents: number
+  usageBps: number
+  /** Which line it crossed: 8000 (80%) or 10000 (100%). */
+  thresholdBps: number
+}
+
+export interface DashboardSummaryDto {
+  month: MonthKey
+  totals: {
+    incomeCents: number
+    expenseCents: number
+    netCents: number
+    /** Still to receive / still to pay this month (pending rows). */
+    pendingIncomeCents: number
+    pendingExpenseCents: number
+  }
+  /** Top-level categories with spending or a budget, biggest first. */
+  byCategory: CategorySpendDto[]
+  /** The six months ending with the one on screen. */
+  trend: MonthPointDto[]
+  /** Budgets at or past 80%, worst first. */
+  alerts: BudgetAlertDto[]
+}
+
 export interface ApiErrorBody {
   error: {
     code: string
