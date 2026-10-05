@@ -42,7 +42,11 @@ export function occurrencesBetween(rule: RecurrenceConfig, from: IsoDate, to: Is
     const { year: sy, month: sm } = parseIsoDate(rule.startDate)
     const months = (fy - sy) * 12 + (fm - sm)
     const perStep =
-      rule.frequency === 'MONTHLY' ? rule.interval : rule.frequency === 'YEARLY' ? 12 * rule.interval : 0
+      rule.frequency === 'MONTHLY'
+        ? rule.interval
+        : rule.frequency === 'YEARLY'
+          ? 12 * rule.interval
+          : 0
     if (perStep > 0) n = Math.max(0, Math.floor(months / perStep) - 1)
     else {
       const days = Math.round(

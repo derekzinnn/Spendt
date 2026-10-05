@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { idSchema, isoDateSchema, positiveCentsSchema, recurrenceFrequencySchema } from './primitives'
+import {
+  idSchema,
+  isoDateSchema,
+  positiveCentsSchema,
+  recurrenceFrequencySchema,
+} from './primitives'
 
 /**
  * Rent, subscriptions, salary… A rule materializes one row per occurrence:

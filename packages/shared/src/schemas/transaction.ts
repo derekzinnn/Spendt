@@ -48,7 +48,11 @@ export const createTransactionSchema = z
       if (!value.accountId)
         ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'Escolha a conta de origem' })
       if (!value.toAccountId)
-        ctx.addIssue({ code: 'custom', path: ['toAccountId'], message: 'Escolha a conta de destino' })
+        ctx.addIssue({
+          code: 'custom',
+          path: ['toAccountId'],
+          message: 'Escolha a conta de destino',
+        })
       if (value.accountId && value.accountId === value.toAccountId)
         ctx.addIssue({
           code: 'custom',
@@ -64,7 +68,11 @@ export const createTransactionSchema = z
       return
     }
     if (value.toAccountId)
-      ctx.addIssue({ code: 'custom', path: ['toAccountId'], message: 'Só transferências têm destino' })
+      ctx.addIssue({
+        code: 'custom',
+        path: ['toAccountId'],
+        message: 'Só transferências têm destino',
+      })
     if (value.status === 'PAID' && !value.accountId)
       ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'Escolha a conta' })
     if (value.status === 'PENDING' && !value.dueDate)
