@@ -4,7 +4,15 @@
  */
 import type { CategoryIconKey } from './category-icons'
 import type { IsoDate, MonthKey } from './dates'
-import type { AccountType, CardBrand, CategoryKind, HouseholdRole } from './enums'
+import type {
+  AccountType,
+  CardBrand,
+  CategoryKind,
+  HouseholdRole,
+  RecurrenceFrequency,
+  TransactionStatus,
+  TransactionType,
+} from './enums'
 import type { InvoiceStatus } from './invoices'
 import type { PaletteKey } from './palette'
 
@@ -166,6 +174,67 @@ export interface CardPurchaseResultDto {
 export interface DeletedItemsDto {
   /** Ids to send back to POST /card-purchases/restore for "Desfazer". */
   ids: string[]
+}
+
+/** One ledger row, as the grid shows it. */
+export interface TransactionDto {
+  id: string
+  type: TransactionType
+  status: TransactionStatus
+  amountCents: number
+  /** Competence date. */
+  date: IsoDate
+  dueDate: IsoDate | null
+  paidDate: IsoDate | null
+  description: string
+  notes: string | null
+  categoryId: string | null
+  accountId: string | null
+  toAccountId: string | null
+  creditCardId: string | null
+  invoiceId: string | null
+  paidById: string | null
+  installmentPlanId: string | null
+  installmentNumber: number | null
+  installmentCount: number | null
+  recurringRuleId: string | null
+  createdAt: string
+}
+
+export interface TransactionTotalsDto {
+  /** Σ INCOME on accounts (card credits count as negative expense instead). */
+  incomeCents: number
+  /** Σ EXPENSE (accounts + cards) − Σ card credits. */
+  expenseCents: number
+  /** income − expense. */
+  netCents: number
+  /** Σ of the rows still PENDING (expenses and incomes). */
+  pendingCents: number
+  count: number
+}
+
+export interface TransactionListDto {
+  items: TransactionDto[]
+  totals: TransactionTotalsDto
+}
+
+export interface RecurringRuleDto {
+  id: string
+  type: 'EXPENSE' | 'INCOME'
+  description: string
+  amountCents: number
+  categoryId: string | null
+  accountId: string | null
+  creditCardId: string | null
+  paidById: string | null
+  frequency: RecurrenceFrequency
+  interval: number
+  startDate: IsoDate
+  endDate: IsoDate | null
+  autoConfirm: boolean
+  pausedAt: string | null
+  /** Next date on or after today, or null when the rule has ended. */
+  nextOccurrence: IsoDate | null
 }
 
 export interface ApiErrorBody {

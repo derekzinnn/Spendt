@@ -10,6 +10,7 @@ import type { CreditCard } from '../../generated/prisma/client'
 import { HttpError } from '../../lib/http-error'
 import { prisma } from '../../lib/prisma'
 import { assertHolder } from '../accounts/account.service'
+import { ensureOccurrences } from '../recurring/recurring.service'
 
 import { currentInvoiceOf, loadInvoices, type InvoiceRow } from './invoice.service'
 
@@ -99,6 +100,8 @@ async function assertNameAvailable(householdId: string, name: string, exceptId?:
 }
 
 export async function listCards(householdId: string, includeArchived: boolean): Promise<CardDto[]> {
+  // Subscriptions on cards land on their invoices when their day arrives.
+  await ensureOccurrences(householdId)
   const [cards, usage, invoices] = await Promise.all([
     prisma.creditCard.findMany({
       where: { householdId, ...(includeArchived ? {} : { archivedAt: null }) },

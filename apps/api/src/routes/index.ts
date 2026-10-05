@@ -10,6 +10,8 @@ import { categoriesRouter } from './categories.routes'
 import { healthRouter } from './health'
 import { householdRouter } from './household.routes'
 import { invitesRouter } from './invites.routes'
+import { recurringRouter } from './recurring.routes'
+import { transactionsRouter } from './transactions.routes'
 
 export interface ApiOptions {
   /** Attempts per IP per 15 minutes on credential endpoints. */
@@ -34,6 +36,8 @@ export function apiRouter(options: ApiOptions) {
   router.use('/cards', requireHousehold, cardsRouter())
   router.use('/invoices', requireHousehold, invoicesRouter())
   router.use('/card-purchases', requireHousehold, cardPurchasesRouter())
+  router.use('/transactions', requireHousehold, transactionsRouter())
+  router.use('/recurring-rules', requireHousehold, recurringRouter())
 
   return router
 }
