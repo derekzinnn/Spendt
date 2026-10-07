@@ -455,7 +455,8 @@ route); rulers grow from the left (`animate-grow-x`). `prefers-reduced-motion` s
 - ≥ 900px: 252px sidebar (brand + household, groups **Visão / Registro / Cadastros**, footer
   with "Saldo nas contas", people, Sair + privacy/theme) · sticky header with the page title
   (the page's `<h1>`), the shared **month picker** (monthly screens only), "Lançar ou buscar ·
-  Ctrl K" and the primary "+ Lançamento" · content max 1400px, 28px rhythm.
+  Ctrl K" and the primary "+ Lançamento" · content fills the width (no cap — it used to be
+  1400px, which left a gap beside the full-width header on big screens), 28px rhythm.
 - < 900px: sticky header (title, privacy, "Mais" sheet; the month picker drops to its own row) ·
   fixed 66px bottom bar: Painel, Lançar, **square + FAB**, Cartões, A pagar.
 - The month lives in `MonthProvider` (`useMonth()`), so switching screens keeps the month.

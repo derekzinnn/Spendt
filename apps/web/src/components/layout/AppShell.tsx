@@ -53,7 +53,7 @@ export function AppShell() {
         <main
           key={pathname}
           id="conteudo"
-          className="flex w-full max-w-350 animate-page-in flex-col gap-7 px-4 pt-5 pb-28 desk:px-6 desk:pt-6 desk:pb-14"
+          className="flex w-full animate-page-in flex-col gap-7 px-4 pt-5 pb-28 desk:px-6 desk:pt-6 desk:pb-14"
         >
           <Outlet />
         </main>
