@@ -33,7 +33,8 @@ RUN pnpm --filter @spendly/api build
 RUN pnpm --filter @spendly/web build
 # A production-only tree for the api: the bundle inlines @spendly/shared, but the
 # native and runtime dependencies (@node-rs/argon2, @prisma/client, express…) stay out.
-RUN pnpm --filter @spendly/api deploy --prod /out
+# --legacy: pnpm 10+ refuses to deploy a workspace that does not inject its packages.
+RUN pnpm --filter @spendly/api deploy --prod --legacy /out
 
 # ---- Migrator: applies pending migrations, then exits --------------------------
 # It keeps the dev dependencies on purpose — the Prisma CLI lives there. The schema
