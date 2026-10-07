@@ -40,6 +40,11 @@ const BUILT: Record<string, ScreenRoute> = {
     () => import('@/features/transactions/TransactionsPage'),
     'TransactionsPage',
   ),
+  // Same screen, different view: its own URL so it can be linked, bookmarked and found.
+  [ROUTES.recurring]: lazyRoute(
+    () => import('@/features/transactions/TransactionsPage'),
+    'TransactionsPage',
+  ),
   [ROUTES.bills]: lazyRoute(() => import('@/features/bills/BillsPage'), 'BillsPage'),
   [ROUTES.incomes]: lazyRoute(() => import('@/features/incomes/IncomesPage'), 'IncomesPage'),
   [ROUTES.categories]: lazyRoute(

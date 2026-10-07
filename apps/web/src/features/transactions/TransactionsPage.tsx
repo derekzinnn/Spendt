@@ -6,8 +6,9 @@ import {
 } from '@spendly/shared'
 import { Plus, Search, Sheet as SheetIcon, X } from 'lucide-react'
 import { useDeferredValue, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 
+import { ROUTES } from '@/app/navigation'
 import { EmptyState } from '@/components/empty-state/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -20,7 +21,6 @@ import { useIsDesktop } from '@/lib/use-media-query'
 import { ExportMenu } from '@/features/import/ExportMenu'
 
 import { useTransactions } from './api'
-import { InlineAddBar } from './InlineAddBar'
 import { useLookups } from './lookups'
 import { RecurringPanel } from './RecurringPanel'
 import { TransactionGrid } from './TransactionGrid'
@@ -41,11 +41,17 @@ const CHIP_PARAMS = ['categoryId', 'accountId', 'creditCardId', 'paidById'] as c
 export function TransactionsPage() {
   const { month } = useMonth()
   const [params, setParams] = useSearchParams()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   const lookups = useLookups()
   const [sheet, setSheet] = useState<TransactionSheetState>({ open: false })
 
-  const view = params.get('view') === 'recorrencias' ? 'recorrencias' : 'lancamentos'
+  // Each view has its own URL. The old `?view=recorrencias` links still work.
+  const view =
+    pathname === ROUTES.recurring || params.get('view') === 'recorrencias'
+      ? 'recorrencias'
+      : 'lancamentos'
   const kindParam = params.get('kind') ?? 'all'
   const kind = (TRANSACTION_KIND_FILTERS as readonly string[]).includes(kindParam)
     ? (kindParam as TransactionKindFilter)
@@ -97,7 +103,7 @@ export function TransactionsPage() {
 
   const clearFilters = () => {
     setSearch('')
-    setParams(new URLSearchParams(view === 'recorrencias' ? { view } : {}), { replace: true })
+    setParams(new URLSearchParams(), { replace: true })
   }
   const edit = (transaction: TransactionDto) => setSheet({ open: true, transaction })
 
@@ -107,7 +113,9 @@ export function TransactionsPage() {
         <Segmented
           aria-label="Visão"
           value={view}
-          onValueChange={(value) => setParam('view', value === 'recorrencias' ? value : null)}
+          onValueChange={(value) =>
+            void navigate(value === 'recorrencias' ? ROUTES.recurring : ROUTES.transactions)
+          }
           options={[
             { value: 'lancamentos', label: 'Lançamentos' },
             { value: 'recorrencias', label: 'Recorrências' },
@@ -127,8 +135,6 @@ export function TransactionsPage() {
         <RecurringPanel lookups={lookups} />
       ) : (
         <>
-          {isDesktop ? <InlineAddBar month={month} lookups={lookups} /> : null}
-
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative overflow-x-auto">
               <Segmented

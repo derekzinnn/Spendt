@@ -10,6 +10,7 @@ import { Kbd } from '@/components/ui/misc'
 import { overlayClassName } from '@/components/ui/sheet'
 import { useTransactions } from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
+import { normalizeSearch } from '@/lib/search-text'
 import { useMonth } from '@/lib/month'
 
 interface Command {
@@ -22,9 +23,6 @@ interface Command {
   keywords: string
   run: () => void
 }
-
-const normalize = (value: string) =>
-  value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
 
 /**
  * Ctrl/⌘+K: one box to launch, jump and find. Typing filters screens and searches the
@@ -60,7 +58,7 @@ function Palette({ onClose, onQuickAdd }: { onClose: () => void; onQuickAdd: () 
   const { month } = useMonth()
   const [text, setText] = useState('')
   const [active, setActive] = useState(0)
-  const query = useDeferredValue(normalize(text))
+  const query = useDeferredValue(normalizeSearch(text))
   const search = useTransactions({ month, q: text.trim() }, { enabled: query.length >= 2 })
 
   const go = (to: string) => {
@@ -135,7 +133,7 @@ function Palette({ onClose, onQuickAdd }: { onClose: () => void; onQuickAdd: () 
             run: () => go(`${ROUTES.transactions}?q=${encodeURIComponent(t.description)}`),
           }))
         : []
-    const matches = (c: Command) => !query || normalize(c.keywords).includes(query)
+    const matches = (c: Command) => !query || normalizeSearch(c.keywords).includes(query)
     return [...launch.filter(matches), ...screens.filter(matches), ...found]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- go/onClose are stable enough per open
   }, [query, search.data])

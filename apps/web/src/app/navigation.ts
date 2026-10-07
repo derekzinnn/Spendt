@@ -1,6 +1,7 @@
 import {
   Calendar,
   FileUp,
+  Repeat,
   CreditCard,
   LayoutDashboard,
   Palette,
@@ -31,6 +32,7 @@ export const ROUTES = {
   invite: '/convite/:token',
   dashboard: '/',
   transactions: '/lancamentos',
+  recurring: '/recorrencias',
   bills: '/contas-a-pagar',
   incomes: '/receitas',
   cards: '/cartoes',
@@ -60,6 +62,15 @@ const TRANSACTIONS: NavItem = {
   monthly: true,
   description:
     'A planilha da casa: edição direto na grade, navegação por teclado, filtros, agrupamentos e totais sempre visíveis.',
+}
+
+const RECURRING: NavItem = {
+  to: ROUTES.recurring,
+  label: 'Recorrências',
+  icon: Repeat,
+  phase: 3,
+  description:
+    'O que se repete todo mês: aluguel, assinaturas, salário. Na conta ou no cartão, com confirmação automática no dia.',
 }
 
 const INCOMES: NavItem = {
@@ -141,7 +152,7 @@ export const DESIGN_ITEM: NavItem = {
 
 export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   { title: 'Visão', items: [DASHBOARD] },
-  { title: 'Registro', items: [TRANSACTIONS, INCOMES, BILLS] },
+  { title: 'Registro', items: [TRANSACTIONS, RECURRING, INCOMES, BILLS] },
   { title: 'Cadastros', items: [CARDS, ACCOUNTS, CATEGORIES, IMPORT, SETTINGS_ITEM] },
 ]
 

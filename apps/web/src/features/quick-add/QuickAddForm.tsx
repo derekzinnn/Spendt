@@ -30,6 +30,7 @@ import { announcePurchase, useInvoicePreview } from '@/features/cards/purchase-h
 import { useCategories, useCreateCategory } from '@/features/categories/api'
 import { useCreateTransaction, useDeleteTransaction } from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
+import { normalizeSearch } from '@/lib/search-text'
 import { errorMessage } from '@/lib/form-errors'
 import { undoToast } from '@/lib/undo-toast'
 
@@ -48,8 +49,6 @@ type QuickAddValues = z.input<typeof quickAddSchema>
 const VISIBLE_CATEGORIES = 8
 /** Prefix of a card in the "Conta / cartão" choice (accounts use their plain id). */
 const CARD = 'card:'
-const normalize = (value: string) => value.trim().toLocaleLowerCase('pt-BR')
-
 /** The chips of quick add: hairline boxes; the chosen one takes a steel frame and wash. */
 const pickClass = (selected: boolean) =>
   cn(
@@ -116,15 +115,19 @@ export function QuickAddForm({
   const card = accountId.startsWith(CARD) ? cards.find((c) => CARD + c.id === accountId) : undefined
   const invoicePreview = useInvoicePreview(card, todayIso())
 
-  const term = normalize(query)
+  // On a card the money comes from the card, not from a person — ask who used it instead,
+  // the same question the "Nova compra" sheet asks.
+  const paidByLabel = card ? 'Quem usou o cartão' : type === 'INCOME' ? 'Recebido por' : 'Pago por'
+
+  const term = normalizeSearch(query)
   const visible: CategoryDto[] = term
-    ? active.filter((c) => normalize(c.name).includes(term)).slice(0, 12)
+    ? active.filter((c) => normalizeSearch(c.name).includes(term)).slice(0, 12)
     : active.filter((c) => !c.parentId).slice(0, VISIBLE_CATEGORIES)
   const selected = active.find((c) => c.id === categoryId)
   if (selected && !visible.includes(selected)) visible.unshift(selected)
 
   const canCreate =
-    term.length > 0 && !active.some((c) => !c.parentId && normalize(c.name) === term)
+    term.length > 0 && !active.some((c) => !c.parentId && normalizeSearch(c.name) === term)
 
   const hint = !amountCents
     ? 'Digite o valor'
@@ -418,12 +421,10 @@ export function QuickAddForm({
           name="paidById"
           render={({ field }) => (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">
-                {type === 'INCOME' ? 'Recebido por' : 'Pago por'}
-              </span>
+              <span className="text-xs text-muted-foreground">{paidByLabel}</span>
               <Segmented
                 fill
-                aria-label={type === 'INCOME' ? 'Recebido por' : 'Pago por'}
+                aria-label={paidByLabel}
                 value={field.value}
                 onValueChange={field.onChange}
                 options={members.map((m) => ({ value: m.id, label: m.displayName }))}

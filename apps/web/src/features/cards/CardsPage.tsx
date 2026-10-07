@@ -63,6 +63,7 @@ import {
 import { dayMonth, invoiceDates, invoiceName } from './card-meta'
 import { CardFormSheet } from './CardFormSheet'
 import { InvoiceStatusTag } from './InvoiceStatusTag'
+import { EditPurchaseSheet, type EditPurchaseState } from './EditPurchaseSheet'
 import { PurchaseSheet } from './PurchaseSheet'
 
 const cardPath = (id: string) => `${ROUTES.cards}/${id}`
@@ -149,7 +150,7 @@ function InvoiceStrip({
   )
 }
 
-function ItemActions({ item }: { item: CardItemDto }) {
+function ItemActions({ item, onEdit }: { item: CardItemDto; onEdit: (item: CardItemDto) => void }) {
   const remove = useDeletePurchase()
   const restore = useRestorePurchases()
   const run = (scope: PurchaseScope) =>
@@ -176,6 +177,10 @@ function ItemActions({ item }: { item: CardItemDto }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
+        <DropdownMenuItem onSelect={() => onEdit(item)}>
+          <Pencil /> Editar
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         {inPlan ? (
           <>
             <DropdownMenuLabel className="kicker text-muted-foreground">Excluir</DropdownMenuLabel>
@@ -201,6 +206,8 @@ function ItemActions({ item }: { item: CardItemDto }) {
 
 function InvoiceItems({ invoiceId }: { invoiceId: string }) {
   const { data, isPending } = useInvoice(invoiceId)
+  const [editing, setEditing] = useState<EditPurchaseState>({ open: false })
+  const onEditItem = (item: CardItemDto) => setEditing({ open: true, item })
   const { members } = useHouseholdContext()
   const categories = useCategories().data
   const byId = useMemo(() => new Map((categories ?? []).map((c) => [c.id, c])), [categories])
@@ -278,7 +285,7 @@ function InvoiceItems({ invoiceId }: { invoiceId: string }) {
                   />
                 </td>
                 <td className="px-1">
-                  <ItemActions item={item} />
+                  <ItemActions item={item} onEdit={onEditItem} />
                 </td>
               </tr>
             )
@@ -296,6 +303,11 @@ function InvoiceItems({ invoiceId }: { invoiceId: string }) {
           </tr>
         </tfoot>
       </table>
+
+      <EditPurchaseSheet
+        state={editing}
+        onOpenChange={(open) => setEditing((current) => ({ ...current, open }))}
+      />
     </div>
   )
 }
