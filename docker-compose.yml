@@ -1,0 +1,77 @@
+# Spendly / Casa — the whole app on one VPS, behind the shared Caddy.
+#
+# Nothing here publishes a port: Caddy is the only thing listening on 80/443 and it
+# reaches these by container name over the external "web" network.
+#
+# The database sits on "internal" ONLY. Containers of other projects share "web", so
+# keeping Postgres off it means a neighbour that gets compromised still cannot reach it.
+
+name: spendt
+
+services:
+  spendt-db:
+    image: postgres:17-alpine
+    container_name: spendt-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Deterministic collation, so ordering never depends on the host's locale.
+      LANG: C
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Runs `prisma migrate deploy` and exits. The API waits for it to finish, so a deploy
+  # can never start a version of the server whose columns do not exist yet.
+  spendt-migrate:
+    build:
+      context: .
+      target: migrator
+    container_name: spendt-migrate
+    restart: 'no'
+    env_file: ./.env
+    depends_on:
+      spendt-db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  spendt-api:
+    build:
+      context: .
+      target: api
+    container_name: spendt-api
+    restart: unless-stopped
+    env_file: ./.env
+    depends_on:
+      spendt-migrate:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - web
+
+  spendt-web:
+    build:
+      context: .
+      target: web
+    container_name: spendt-web
+    restart: unless-stopped
+    networks:
+      - web
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+  web:
+    external: true

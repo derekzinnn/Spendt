@@ -4,3 +4,7 @@ coverage
 pnpm-lock.yaml
 apps/api/src/generated
 apps/api/prisma/migrations/**/*.sql
+
+# Infra files Prettier has no parser for
+Dockerfile
+*.conf

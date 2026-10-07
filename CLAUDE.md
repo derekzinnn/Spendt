@@ -14,8 +14,11 @@ packages and storage keys keep the `spendly` name.
 - **Money model:** everything belongs to the couple — no "mine/hers" expenses, no splits, no
   who-owes-whom; `paidById` only records who paid ("pago por")
 
-> **Infra is owned by the user** (Docker, Caddy, DNS, deploy). Never create Dockerfiles,
-> docker-compose, CI files or deploy scripts. Only application code + `.env.example`.
+> **Infra lives in this repo, the server is the user's** (2026-10-07). The `Dockerfile`,
+> `docker-compose.yml` and `apps/web/nginx.conf` are ours to write and keep working — see
+> [Deploy](#deploy-spendtderekdevbr). What stays with the user: the VPS itself, DNS, the
+> shared Caddy at `~/infra/Caddyfile`, and the `.env` with the real secrets (never in git).
+> Still not ours to create: CI files.
 
 > **Teaching rule:** whenever a new technical concept is introduced, first explain it in
 > "banana-simple" language with an everyday analogy, then technically. See [Glossary](#glossary-banana-simple).
@@ -68,6 +71,30 @@ for the API integration tests. To run them against your own Postgres instead, se
 | `pnpm db:migrate`                                            | Create/apply a migration in development (`prisma migrate dev`)       |
 | `pnpm db:deploy`                                             | Apply pending migrations (production: `prisma migrate deploy`)       |
 | `pnpm db:seed` · `pnpm db:studio`                            | Seed demo data · open Prisma Studio                                  |
+
+### Deploy (spendt.derek.dev.br)
+
+One VPS (Oracle ARM, `~/projects/Spendt`) with a Caddy container shared by several
+projects. `docker compose up -d --build` is the whole deploy:
+
+| Container        | Image target | Job                                                          |
+| ---------------- | ------------ | ------------------------------------------------------------ |
+| `spendt-db`      | postgres:17  | The database. On the `internal` network **only**.            |
+| `spendt-migrate` | `migrator`   | Runs `prisma migrate deploy` and exits; the API waits for it |
+| `spendt-api`     | `api`        | `node dist/server.js` as the unprivileged `node` user        |
+| `spendt-web`     | `web`        | nginx with `apps/web/dist` and the SPA fallback              |
+
+- **Nothing publishes a port.** Caddy is the only thing on 80/443 and reaches the
+  containers by name over the external `web` network.
+- **The database is not on `web`.** Other projects share that network; a neighbour that
+  gets compromised still cannot reach Postgres. (This is not hypothetical — a sibling
+  container on this box was compromised and mining on 2026-10-06.)
+- **Migrations run before the API starts**, as their own container. Deploying code whose
+  columns do not exist yet is therefore impossible.
+- The Caddy block lives in the user's `~/infra/Caddyfile`:
+  `handle /api/*` → `spendt-api:3333` (keep the prefix — the API mounts at `/api`) and
+  `handle` → `spendt-web:80`.
+- **Backups are not automatic yet.** `spendt-db` holds the only copy.
 
 ### Contract with the infrastructure (for the user's Docker/Caddy setup)
 
