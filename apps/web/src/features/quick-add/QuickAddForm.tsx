@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   formatBRL,
+  isoDateSchema,
   MAX_INSTALLMENTS,
   NEUTRAL_PALETTE_KEY,
   PALETTE_KEYS,
@@ -9,7 +10,7 @@ import {
   type CategoryDto,
   type PaletteKey,
 } from '@spendly/shared'
-import { CreditCard, Plus, X } from 'lucide-react'
+import { CalendarClock, CreditCard, Plus, X } from 'lucide-react'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link } from 'react-router'
@@ -42,6 +43,9 @@ const quickAddSchema = z.object({
   /** Who paid / received — information only: everything belongs to the couple. */
   paidById: z.string(),
   description: z.string().max(120),
+  /** Card purchases only: the day it happened, and whether it is a credit back. */
+  date: isoDateSchema,
+  kind: z.enum(['PURCHASE', 'REFUND']),
 })
 
 type QuickAddValues = z.input<typeof quickAddSchema>
@@ -96,12 +100,14 @@ export function QuickAddForm({
       accountId: '',
       paidById: member.id,
       description: '',
+      date: todayIso(),
+      kind: 'PURCHASE',
     },
   })
   const { control, handleSubmit, setValue, reset } = form
-  const [type, amountCents, categoryId, accountId] = useWatch({
+  const [type, amountCents, categoryId, accountId, date, kind] = useWatch({
     control,
-    name: ['type', 'amountCents', 'categoryId', 'accountId'],
+    name: ['type', 'amountCents', 'categoryId', 'accountId', 'date', 'kind'],
   })
 
   const active = useMemo(
@@ -113,7 +119,7 @@ export function QuickAddForm({
   // Cards only take expenses (refunds live on the Cartões screen).
   const cards = type === 'EXPENSE' ? (cardsQuery.data ?? []).filter((c) => !c.archivedAt) : []
   const card = accountId.startsWith(CARD) ? cards.find((c) => CARD + c.id === accountId) : undefined
-  const invoicePreview = useInvoicePreview(card, todayIso())
+  const invoicePreview = useInvoicePreview(card, date)
 
   // On a card the money comes from the card, not from a person — ask who used it instead,
   // the same question the "Nova compra" sheet asks.
@@ -168,12 +174,12 @@ export function QuickAddForm({
       createPurchase.mutate(
         {
           creditCardId: card.id,
-          kind: 'PURCHASE',
+          kind: values.kind,
           description:
             values.description.trim() ||
             (active.find((c) => c.id === values.categoryId)?.name ?? 'Compra'),
           amountCents: values.amountCents ?? 0,
-          date: todayIso(),
+          date: values.date,
           categoryId: values.categoryId,
           installments,
           paidById: values.paidById || null,
@@ -274,6 +280,123 @@ export function QuickAddForm({
         )}
       />
 
+      <Controller
+        control={control}
+        name="accountId"
+        render={({ field }) => (
+          <section aria-labelledby="qa-account" className="flex flex-col gap-1.5">
+            <span id="qa-account" className="text-xs text-muted-foreground">
+              {type === 'INCOME' ? 'Onde entrou' : 'Conta / cartão'}
+            </span>
+            {accounts.length === 0 && cards.length === 0 && !accountsQuery.isPending ? (
+              <p className="border border-dashed border-border-strong p-3 text-[13px] text-muted-foreground">
+                Nenhuma conta ainda.{' '}
+                <Link to={ROUTES.accounts} onClick={onDone} className="text-primary underline">
+                  Cadastrar conta
+                </Link>{' '}
+              </p>
+            ) : (
+              <div
+                role="radiogroup"
+                aria-labelledby="qa-account"
+                className="flex flex-wrap gap-1.5"
+              >
+                {cards.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={field.value === CARD + c.id}
+                    onClick={() => field.onChange(CARD + c.id)}
+                    className={pickClass(field.value === CARD + c.id)}
+                  >
+                    <CreditCard aria-hidden />
+                    {c.name}
+                  </button>
+                ))}
+                {accounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={field.value === account.id}
+                    onClick={() => field.onChange(account.id)}
+                    className={pickClass(field.value === account.id)}
+                  >
+                    {account.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      />
+
+      {card ? (
+        <section aria-label="Detalhes da compra no cartão" className="flex flex-col gap-3">
+          <Controller
+            control={control}
+            name="kind"
+            render={({ field }) => (
+              <Segmented
+                aria-label="Tipo da operação no cartão"
+                className="self-start"
+                size="sm"
+                value={field.value}
+                onValueChange={field.onChange}
+                options={[
+                  { value: 'PURCHASE', label: 'Compra' },
+                  { value: 'REFUND', label: 'Estorno / crédito' },
+                ]}
+              />
+            )}
+          />
+
+          <div className="flex flex-wrap items-end gap-3">
+            {kind === 'PURCHASE' ? (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="qa-installments" className="text-xs text-muted-foreground">
+                  Parcelas
+                </label>
+                <NativeSelect
+                  id="qa-installments"
+                  value={installments}
+                  onChange={(event) => setInstallments(Number(event.target.value))}
+                  className="w-40"
+                >
+                  {Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1
+                        ? 'À vista'
+                        : `${n}x${amountCents ? ` de ${formatBRL(Math.floor(amountCents / n))}` : ''}`}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="qa-date" className="text-xs text-muted-foreground">
+                Data da compra
+              </label>
+              <Input id="qa-date" type="date" className="w-44" {...control.register('date')} />
+            </div>
+          </div>
+
+          {invoicePreview ? (
+            <p className="flex items-center gap-2 border-l-2 border-steel bg-steel-100 px-3 py-2 text-[13px] text-steel-800">
+              <CalendarClock aria-hidden className="size-4 shrink-0" />
+              <span>
+                {invoicePreview.label}
+                {kind === 'PURCHASE' && installments > 1
+                  ? ` — as outras ${installments - 1} parcelas nas faturas seguintes`
+                  : ''}
+              </span>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <section aria-label="Categoria" className="flex flex-col gap-2">
         <Input
           value={query}
@@ -340,80 +463,6 @@ export function QuickAddForm({
           />
         )}
       />
-
-      <Controller
-        control={control}
-        name="accountId"
-        render={({ field }) => (
-          <section aria-labelledby="qa-account" className="flex flex-col gap-1.5">
-            <span id="qa-account" className="text-xs text-muted-foreground">
-              {type === 'INCOME' ? 'Onde entrou' : 'Conta / cartão'}
-            </span>
-            {accounts.length === 0 && cards.length === 0 && !accountsQuery.isPending ? (
-              <p className="border border-dashed border-border-strong p-3 text-[13px] text-muted-foreground">
-                Nenhuma conta ainda.{' '}
-                <Link to={ROUTES.accounts} onClick={onDone} className="text-primary underline">
-                  Cadastrar conta
-                </Link>{' '}
-              </p>
-            ) : (
-              <div
-                role="radiogroup"
-                aria-labelledby="qa-account"
-                className="flex flex-wrap gap-1.5"
-              >
-                {cards.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={field.value === CARD + c.id}
-                    onClick={() => field.onChange(CARD + c.id)}
-                    className={pickClass(field.value === CARD + c.id)}
-                  >
-                    <CreditCard aria-hidden />
-                    {c.name}
-                  </button>
-                ))}
-                {accounts.map((account) => (
-                  <button
-                    key={account.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={field.value === account.id}
-                    onClick={() => field.onChange(account.id)}
-                    className={pickClass(field.value === account.id)}
-                  >
-                    {account.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-      />
-
-      {card ? (
-        <div className="flex items-center gap-3">
-          <label htmlFor="qa-installments" className="text-xs text-muted-foreground">
-            Parcelas
-          </label>
-          <NativeSelect
-            id="qa-installments"
-            value={installments}
-            onChange={(event) => setInstallments(Number(event.target.value))}
-            className="w-40"
-          >
-            {Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>
-                {n === 1
-                  ? 'À vista'
-                  : `${n}x${amountCents ? ` de ${formatBRL(Math.floor(amountCents / n))}` : ''}`}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      ) : null}
 
       {members.length > 1 ? (
         <Controller
