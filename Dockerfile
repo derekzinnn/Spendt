@@ -43,7 +43,9 @@ FROM builder AS migrator
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo/apps/api
-CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
+# The binary directly, not `pnpm exec`: with NODE_ENV=production pnpm decides node_modules
+# is stale, tries to reinstall, and aborts because a container has no TTY.
+CMD ["./node_modules/.bin/prisma", "migrate", "deploy"]
 
 # ---- API runtime ---------------------------------------------------------------
 FROM node:24-slim AS api
