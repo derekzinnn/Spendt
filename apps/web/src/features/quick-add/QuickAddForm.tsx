@@ -10,7 +10,7 @@ import {
   type CategoryDto,
   type PaletteKey,
 } from '@spendly/shared'
-import { CalendarClock, CreditCard, Plus, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, CreditCard, Plus, Wallet, X } from 'lucide-react'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link } from 'react-router'
@@ -21,7 +21,7 @@ import { ROUTES } from '@/app/navigation'
 import { CATEGORY_ICONS } from '@/components/category/category-icons'
 import { AmountInput } from '@/components/money/AmountInput'
 import { Button } from '@/components/ui/button'
-import { NativeSelect } from '@/components/ui/form'
+import { Field, NativeSelect } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useAccounts } from '@/features/accounts/api'
@@ -53,6 +53,10 @@ type QuickAddValues = z.input<typeof quickAddSchema>
 const VISIBLE_CATEGORIES = 8
 /** Prefix of a card in the "Conta / cartão" choice (accounts use their plain id). */
 const CARD = 'card:'
+/** Step 1's two big targets: a framed card you can hit with a thumb. */
+const bigPickClass =
+  'flex cursor-pointer flex-col items-start gap-1 border border-border p-4 text-left transition-colors duration-150 hover:bg-foreground/7 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent'
+
 /** The chips of quick add: hairline boxes; the chosen one takes a steel frame and wash. */
 const pickClass = (selected: boolean) =>
   cn(
@@ -231,22 +235,129 @@ export function QuickAddForm({
     if (canSave) void submit()
   }
 
+  const [destination, setDestination] = useState<'card' | 'account' | null>(null)
+
+  /** Step 1 picks the destination and preselects the first card/account of that kind. */
+  function chooseDestination(next: 'card' | 'account') {
+    setDestination(next)
+    const first = next === 'card' ? cards[0] : accounts[0]
+    if (first) setValue('accountId', next === 'card' ? CARD + first.id : first.id)
+  }
+
+  function back() {
+    setDestination(null)
+    setValue('accountId', '')
+  }
+
+  // Step 1 asks only where the money comes from, because that decides the rest of the form:
+  // a card needs installments, a date and an invoice; an account needs none of it.
+  if (!destination) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl">Onde foi?</h2>
+          {onClose ? (
+            <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>
+              <X />
+            </Button>
+          ) : null}
+        </div>
+
+        <div role="group" aria-label="Tipo de destino" className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => chooseDestination('card')}
+            disabled={cards.length === 0}
+            className={bigPickClass}
+          >
+            <CreditCard aria-hidden className="size-6 text-steel-700" />
+            <span className="font-display text-lg">Cartão</span>
+            <span className="text-xs text-muted-foreground">
+              {cards.length === 0
+                ? 'Nenhum cartão ainda'
+                : 'Compra ou estorno, à vista ou parcelada'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => chooseDestination('account')}
+            disabled={accounts.length === 0}
+            className={bigPickClass}
+          >
+            <Wallet aria-hidden className="size-6 text-steel-700" />
+            <span className="font-display text-lg">Conta</span>
+            <span className="text-xs text-muted-foreground">
+              {accounts.length === 0 ? 'Nenhuma conta ainda' : 'Corrente, reserva, carteira ou VR'}
+            </span>
+          </button>
+        </div>
+
+        {accounts.length === 0 && cards.length === 0 && !accountsQuery.isPending ? (
+          <p className="border border-dashed border-border-strong p-3 text-[13px] text-muted-foreground">
+            Nenhuma conta ou cartão ainda.{' '}
+            <Link to={ROUTES.accounts} onClick={onDone} className="text-primary underline">
+              Cadastrar conta
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    )
+  }
+
+  const onCard = destination === 'card'
+
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Voltar para a escolha do destino"
+            onClick={back}
+          >
+            <ArrowLeft />
+          </Button>
+          <h2 className="text-xl">{onCard ? 'Nova compra no cartão' : 'Novo lançamento'}</h2>
+        </div>
+        {onClose ? (
+          <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>
+            <X />
+          </Button>
+        ) : null}
+      </div>
+
+      {onCard ? (
+        <Controller
+          control={control}
+          name="kind"
+          render={({ field }) => (
+            <Segmented
+              aria-label="Tipo da operação no cartão"
+              className="self-start"
+              value={field.value}
+              onValueChange={field.onChange}
+              options={[
+                { value: 'PURCHASE', label: 'Compra' },
+                { value: 'REFUND', label: 'Estorno / crédito' },
+              ]}
+            />
+          )}
+        />
+      ) : (
         <Controller
           control={control}
           name="type"
           render={({ field }) => (
             <Segmented
               aria-label="Tipo de lançamento"
+              className="self-start"
               value={field.value}
               onValueChange={(value) => {
                 field.onChange(value)
                 setValue('categoryId', '')
-                // Cards take expenses only: drop a chosen card when switching to income.
-                if (value === 'INCOME' && form.getValues('accountId').startsWith(CARD))
-                  setValue('accountId', '')
               }}
               options={[
                 { value: 'EXPENSE', label: 'Despesa' },
@@ -255,114 +366,61 @@ export function QuickAddForm({
             />
           )}
         />
-        {onClose ? (
-          <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>
-            <X />
-          </Button>
-        ) : null}
+      )}
+
+      <Field label={onCard ? 'Cartão' : 'Conta'} htmlFor="qa-source">
+        <NativeSelect
+          id="qa-source"
+          value={accountId}
+          onChange={(event) => setValue('accountId', event.target.value, { shouldValidate: true })}
+        >
+          {onCard
+            ? cards.map((c) => (
+                <option key={c.id} value={CARD + c.id}>
+                  {c.name}
+                  {c.lastFour ? ` · ${c.lastFour}` : ''}
+                </option>
+              ))
+            : accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+        </NativeSelect>
+      </Field>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">
+          {onCard ? 'Valor total' : type === 'INCOME' ? 'Valor recebido' : 'Valor'}
+        </span>
+        <Controller
+          control={control}
+          name="amountCents"
+          render={({ field }) => (
+            <AmountInput
+              size="hero"
+              autoFocus={autoFocus}
+              aria-label="Valor"
+              flow={type === 'INCOME' ? 'in' : 'out'}
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              onKeyDown={saveOnEnter}
+              name={field.name}
+            />
+          )}
+        />
       </div>
 
-      <Controller
-        control={control}
-        name="amountCents"
-        render={({ field }) => (
-          <AmountInput
-            size="hero"
-            autoFocus={autoFocus}
-            aria-label="Valor"
-            flow={type === 'INCOME' ? 'in' : 'out'}
-            value={field.value}
-            onChange={field.onChange}
-            onBlur={field.onBlur}
-            onKeyDown={saveOnEnter}
-            name={field.name}
-          />
-        )}
-      />
-
-      <Controller
-        control={control}
-        name="accountId"
-        render={({ field }) => (
-          <section aria-labelledby="qa-account" className="flex flex-col gap-1.5">
-            <span id="qa-account" className="text-xs text-muted-foreground">
-              {type === 'INCOME' ? 'Onde entrou' : 'Conta / cartão'}
-            </span>
-            {accounts.length === 0 && cards.length === 0 && !accountsQuery.isPending ? (
-              <p className="border border-dashed border-border-strong p-3 text-[13px] text-muted-foreground">
-                Nenhuma conta ainda.{' '}
-                <Link to={ROUTES.accounts} onClick={onDone} className="text-primary underline">
-                  Cadastrar conta
-                </Link>{' '}
-              </p>
-            ) : (
-              <div
-                role="radiogroup"
-                aria-labelledby="qa-account"
-                className="flex flex-wrap gap-1.5"
-              >
-                {cards.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={field.value === CARD + c.id}
-                    onClick={() => field.onChange(CARD + c.id)}
-                    className={pickClass(field.value === CARD + c.id)}
-                  >
-                    <CreditCard aria-hidden />
-                    {c.name}
-                  </button>
-                ))}
-                {accounts.map((account) => (
-                  <button
-                    key={account.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={field.value === account.id}
-                    onClick={() => field.onChange(account.id)}
-                    className={pickClass(field.value === account.id)}
-                  >
-                    {account.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-      />
-
-      {card ? (
-        <section aria-label="Detalhes da compra no cartão" className="flex flex-col gap-3">
-          <Controller
-            control={control}
-            name="kind"
-            render={({ field }) => (
-              <Segmented
-                aria-label="Tipo da operação no cartão"
-                className="self-start"
-                size="sm"
-                value={field.value}
-                onValueChange={field.onChange}
-                options={[
-                  { value: 'PURCHASE', label: 'Compra' },
-                  { value: 'REFUND', label: 'Estorno / crédito' },
-                ]}
-              />
-            )}
-          />
-
-          <div className="flex flex-wrap items-end gap-3">
+      {onCard ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
             {kind === 'PURCHASE' ? (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="qa-installments" className="text-xs text-muted-foreground">
-                  Parcelas
-                </label>
+              <Field label="Parcelas" htmlFor="qa-installments">
                 <NativeSelect
                   id="qa-installments"
                   value={installments}
                   onChange={(event) => setInstallments(Number(event.target.value))}
-                  className="w-40"
                 >
                   {Array.from({ length: MAX_INSTALLMENTS }, (_, i) => i + 1).map((n) => (
                     <option key={n} value={n}>
@@ -372,15 +430,11 @@ export function QuickAddForm({
                     </option>
                   ))}
                 </NativeSelect>
-              </div>
+              </Field>
             ) : null}
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="qa-date" className="text-xs text-muted-foreground">
-                Data da compra
-              </label>
-              <Input id="qa-date" type="date" className="w-44" {...control.register('date')} />
-            </div>
+            <Field label="Data da compra" htmlFor="qa-date">
+              <Input id="qa-date" type="date" {...control.register('date')} />
+            </Field>
           </div>
 
           {invoicePreview ? (
@@ -394,23 +448,42 @@ export function QuickAddForm({
               </span>
             </p>
           ) : null}
-        </section>
+        </>
       ) : null}
 
+      <Controller
+        control={control}
+        name="description"
+        render={({ field }) => (
+          <Field label="Descrição" htmlFor="qa-description">
+            <Input
+              {...field}
+              id="qa-description"
+              onKeyDown={saveOnEnter}
+              placeholder={onCard ? 'Ex.: Supermercado, Passagens' : 'Opcional'}
+              autoComplete="off"
+            />
+          </Field>
+        )}
+      />
+
       <section aria-label="Categoria" className="flex flex-col gap-2">
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter') return
-            event.preventDefault()
-            if (canCreate) createInline()
-            else if (visible.length === 1 && visible[0])
-              setValue('categoryId', visible[0].id, { shouldValidate: true })
-          }}
-          placeholder="Categoria — buscar ou criar"
-          aria-label="Buscar ou criar categoria"
-        />
+        <Field label="Categoria" htmlFor="qa-category-search">
+          <Input
+            id="qa-category-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              if (canCreate) createInline()
+              else if (visible.length === 1 && visible[0])
+                setValue('categoryId', visible[0].id, { shouldValidate: true })
+            }}
+            placeholder="Buscar ou criar categoria"
+            autoComplete="off"
+          />
+        </Field>
         <div role="radiogroup" aria-label="Categoria" className="flex flex-wrap gap-1.5">
           {visible.map((category) => {
             const isSelected = categoryId === category.id
@@ -426,7 +499,7 @@ export function QuickAddForm({
                 className={pickClass(isSelected)}
               >
                 <Icon aria-hidden />
-                {parent ? <span className="text-muted-foreground">{parent.name} ›</span> : null}
+                {parent ? `${parent.name} › ` : ''}
                 {category.name}
               </button>
             )
@@ -436,33 +509,14 @@ export function QuickAddForm({
               type="button"
               onClick={createInline}
               disabled={createCategory.isPending}
-              className="inline-flex min-h-(--control-h) cursor-pointer items-center gap-1.5 border border-dashed border-steel px-2.5 text-[13px] text-steel-700 transition-colors hover:bg-steel-100 disabled:opacity-45 [&_svg]:size-3.5"
+              className={pickClass(false)}
             >
               <Plus aria-hidden />
               Criar “{query.trim()}”
             </button>
           ) : null}
-          {categoriesQuery.isPending ? (
-            <p className="text-[13px] text-muted-foreground">Carregando categorias…</p>
-          ) : visible.length === 0 && !canCreate ? (
-            <p className="text-[13px] text-muted-foreground">Nenhuma categoria encontrada.</p>
-          ) : null}
         </div>
       </section>
-
-      <Controller
-        control={control}
-        name="description"
-        render={({ field }) => (
-          <Input
-            {...field}
-            onKeyDown={saveOnEnter}
-            placeholder="Descrição (opcional)"
-            aria-label="Descrição"
-            autoComplete="off"
-          />
-        )}
-      />
 
       {members.length > 1 ? (
         <Controller
@@ -493,7 +547,7 @@ export function QuickAddForm({
           disabled={!canSave || createPurchase.isPending || createTransaction.isPending}
           className="px-5 text-[15px]"
         >
-          Salvar
+          {onCard ? 'Lançar compra' : 'Salvar'}
         </Button>
       </div>
     </form>

@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import { AmountInput } from '@/components/money/AmountInput'
 import { Button } from '@/components/ui/button'
-import { Field, NativeSelect, Switch } from '@/components/ui/form'
+import { Field, NativeSelect, SwitchField } from '@/components/ui/form'
 import { Input, Label } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -234,10 +234,9 @@ function TransactionForm({
                 control={form.control}
                 name="pending"
                 render={({ field }) => (
-                  <label className="flex cursor-pointer items-center gap-2.5 text-sm">
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  <SwitchField checked={field.value} onCheckedChange={field.onChange}>
                     {type === 'INCOME' ? 'Ainda vou receber' : 'Ainda vou pagar (conta a pagar)'}
-                  </label>
+                  </SwitchField>
                 )}
               />
             ) : null}

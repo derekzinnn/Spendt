@@ -70,11 +70,13 @@ export default defineConfig([
       // Every autoFocus here is inside something the person just opened (a dialog, a sheet,
       // a cell editor) — focus belongs there, and nothing moves under anyone on page load.
       'jsx-a11y/no-autofocus': 'off',
-      // Our form primitives render the real control inside, so a label around them does
-      // associate — the rule just can't see through the component.
+      // Our form primitives render a real control inside, so a label around them does
+      // associate — the rule just can't see through the component. Switch is NOT in this
+      // list on purpose: Radix renders a <button role="switch">, which a <label> cannot
+      // name. Use <SwitchField>, which wires aria-labelledby.
       'jsx-a11y/label-has-associated-control': [
         'error',
-        { controlComponents: ['AmountInput', 'Input', 'NativeSelect', 'Switch', 'ColorPicker'] },
+        { controlComponents: ['AmountInput', 'Input', 'NativeSelect', 'ColorPicker'] },
       ],
       // shadcn-style variant helpers and provider hooks live next to their component.
       'react-refresh/only-export-components': [

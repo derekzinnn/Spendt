@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChoiceChips, Field, NativeSelect, Switch } from '@/components/ui/form'
+import { ChoiceChips, Field, NativeSelect, SwitchField } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Kbd, Skeleton } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
@@ -144,10 +144,9 @@ export function ComponentsSection() {
                 { value: 'vr', label: 'VR' },
               ]}
             />
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm">
-              <Switch checked={auto} onCheckedChange={setAuto} />
+            <SwitchField checked={auto} onCheckedChange={setAuto}>
               Confirmar recorrências sozinho
-            </label>
+            </SwitchField>
           </Specimen>
         </Card>
 
