@@ -171,6 +171,22 @@ export function TransactionsPage() {
             </div>
           </div>
 
+          {data?.searchedEverything ? (
+            <p
+              aria-live="polite"
+              className="flex items-center gap-2 border-l-2 border-steel bg-steel-100 px-3 py-2 text-[13px] text-steel-800"
+            >
+              <Search aria-hidden className="size-4 shrink-0" />
+              <span>
+                Buscando em <strong className="font-medium">todos os meses</strong> —{' '}
+                {data.totals.count === 1
+                  ? '1 lançamento encontrado'
+                  : `${data.totals.count} lançamentos encontrados`}
+                {data.truncated ? ', mostrando os mais recentes. Refine a busca.' : '.'}
+              </span>
+            </p>
+          ) : null}
+
           {isPending ? (
             <Skeleton className="h-96" aria-label="Carregando lançamentos" />
           ) : isError ? (
@@ -189,7 +205,9 @@ export function TransactionsPage() {
                 icon={SheetIcon}
                 title={
                   filtered
-                    ? 'Nada por aqui com esses filtros'
+                    ? q
+                      ? `Nada encontrado para “${q}” em nenhum mês`
+                      : 'Nada por aqui com esses filtros'
                     : `Nenhum lançamento em ${formatMonthLabel(month)}`
                 }
                 description={

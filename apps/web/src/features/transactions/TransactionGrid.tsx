@@ -1,5 +1,4 @@
 import {
-  formatDateBR,
   type TransactionDto,
   type TransactionTotalsDto,
   type UpdateTransactionInput,
@@ -23,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { inputClassName } from '@/components/ui/input'
 import { cn } from '@/lib/cn'
+import { shortDate } from '@/lib/dates-ui'
 import { errorMessage } from '@/lib/form-errors'
 import { undoToast } from '@/lib/undo-toast'
 
@@ -255,7 +255,7 @@ function CellView({
   let content: ReactNode
   switch (column) {
     case 'date':
-      content = <span className="whitespace-nowrap">{formatDateBR(row.date).slice(0, 5)}</span>
+      content = <span className="whitespace-nowrap">{shortDate(row.date)}</span>
       break
     case 'description':
       content = (
@@ -326,7 +326,7 @@ function CellView({
                 ? 'Recebido'
                 : 'Pago'
               : row.dueDate
-                ? `Vence ${formatDateBR(row.dueDate).slice(0, 5)}`
+                ? `Vence ${shortDate(row.dueDate)}`
                 : 'Pendente'}
           </Badge>
         </button>

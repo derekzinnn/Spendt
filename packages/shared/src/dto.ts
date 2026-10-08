@@ -216,6 +216,10 @@ export interface TransactionTotalsDto {
 export interface TransactionListDto {
   items: TransactionDto[]
   totals: TransactionTotalsDto
+  /** A search looks at the whole ledger, so the month on screen did not limit this list. */
+  searchedEverything: boolean
+  /** True when there were more matches than we are willing to render at once. */
+  truncated: boolean
 }
 
 export interface RecurringRuleDto {

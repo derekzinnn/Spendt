@@ -246,3 +246,66 @@ describe('transactions', () => {
     await intruder.client.post('/api/transactions/restore', { ids: [row.id] })
   })
 })
+
+describe('searching the ledger', () => {
+  it('ignores the month on screen and looks at every month', async () => {
+    const { client, main, market } = await setup()
+    const row = (date: string, description: string) =>
+      post(client, {
+        type: 'EXPENSE',
+        amountCents: 2_500,
+        date,
+        description,
+        categoryId: market.id,
+        accountId: main.id,
+      })
+    await row('2026-10-12', 'Padaria do bairro')
+    await row('2026-07-03', 'Padaria da esquina')
+    await row('2025-12-20', 'Padaria de Natal')
+    await row('2026-10-15', 'Posto Ipiranga')
+
+    // Without a search the month still rules.
+    const october = await list(client, 'month=2026-10')
+    expect(october.items).toHaveLength(2)
+    expect(october.searchedEverything).toBe(false)
+
+    // With one, the month on screen does not limit anything.
+    const found = await list(client, 'month=2026-10&q=padaria')
+    expect(found.searchedEverything).toBe(true)
+    expect(found.truncated).toBe(false)
+    expect(found.items.map((i) => i.description).sort()).toEqual([
+      'Padaria da esquina',
+      'Padaria de Natal',
+      'Padaria do bairro',
+    ])
+    // Newest first, across years.
+    expect(found.items[0]?.date).toBe('2026-10-12')
+    expect(found.items.at(-1)?.date).toBe('2025-12-20')
+  })
+
+  it('still honours the other filters while searching everywhere', async () => {
+    const { client, main, savings, market, salary } = await setup()
+    await post(client, {
+      type: 'EXPENSE',
+      amountCents: 1_000,
+      date: '2026-03-02',
+      description: 'Feira grande',
+      categoryId: market.id,
+      accountId: main.id,
+    })
+    await post(client, {
+      type: 'INCOME',
+      amountCents: 9_000,
+      date: '2026-05-02',
+      description: 'Feira de artesanato',
+      categoryId: salary.id,
+      accountId: savings.id,
+    })
+
+    const onlyExpenses = await list(client, 'month=2026-10&q=feira&kind=expense')
+    expect(onlyExpenses.items.map((i) => i.description)).toEqual(['Feira grande'])
+
+    const onlySavings = await list(client, `month=2026-10&q=feira&accountId=${savings.id}`)
+    expect(onlySavings.items.map((i) => i.description)).toEqual(['Feira de artesanato'])
+  })
+})

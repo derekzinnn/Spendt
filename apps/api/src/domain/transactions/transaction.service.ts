@@ -29,6 +29,9 @@ type Row = Prisma.TransactionGetPayload<{ include: typeof include }>
 
 const day = (value: Date | null) => (value ? fromDbDate(value) : null)
 
+/** Most recent matches a whole-ledger search returns before it says "refine a busca". */
+const SEARCH_LIMIT = 500
+
 export function toTransactionDto(row: Row): TransactionDto {
   return {
     id: row.id,
@@ -84,13 +87,20 @@ export async function listTransactions(
   const query = listTransactionsQuerySchema.parse(rawQuery)
   // Recurring rules materialize lazily, up to the month being looked at.
   await ensureOccurrences(householdId, lastDayOfMonth(query.month))
+  // Searching looks at the whole ledger: "padaria" is useless if it only finds the month
+  // you happen to have open. Without a search the list stays scoped to that month.
+  const searching = Boolean(query.q)
   const where: Prisma.TransactionWhereInput = {
     householdId,
     deletedAt: null,
-    date: {
-      gte: toDbDate(firstDayOfMonth(query.month)),
-      lte: toDbDate(lastDayOfMonth(query.month)),
-    },
+    ...(searching
+      ? {}
+      : {
+          date: {
+            gte: toDbDate(firstDayOfMonth(query.month)),
+            lte: toDbDate(lastDayOfMonth(query.month)),
+          },
+        }),
   }
   if (query.kind === 'expense') where.type = 'EXPENSE'
   if (query.kind === 'income') Object.assign(where, { type: 'INCOME', creditCardId: null })
@@ -111,14 +121,17 @@ export async function listTransactions(
   if (query.q) and.push({ description: { contains: query.q, mode: 'insensitive' } })
   if (and.length) where.AND = and
 
+  // A whole-ledger search can match a lot; the grid renders every row it is given.
+  const limit = searching ? SEARCH_LIMIT : 5000
   const rows = await prisma.transaction.findMany({
     where,
     include,
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    take: 5000,
+    take: limit + 1,
   })
-  const items = rows.map(toTransactionDto)
-  return { items, totals: totalsOf(items) }
+  const truncated = rows.length > limit
+  const items = rows.slice(0, limit).map(toTransactionDto)
+  return { items, totals: totalsOf(items), searchedEverything: searching, truncated }
 }
 
 async function findRow(householdId: string, id: string): Promise<Row> {
