@@ -6,6 +6,12 @@ import {
   NEUTRAL_PALETTE_KEY,
   PALETTE_KEYS,
   positiveCentsSchema,
+  recurrenceFrequencySchema,
+  RECURRENCE_FREQUENCY_LABELS,
+  RECURRENCE_FREQUENCIES,
+  nextOccurrence,
+  addDays,
+  formatDateBR,
   todayIso,
   type CategoryDto,
   type PaletteKey,
@@ -21,7 +27,7 @@ import { ROUTES } from '@/app/navigation'
 import { CATEGORY_ICONS } from '@/components/category/category-icons'
 import { AmountInput } from '@/components/money/AmountInput'
 import { Button } from '@/components/ui/button'
-import { Field, NativeSelect } from '@/components/ui/form'
+import { Field, NativeSelect, SwitchField } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useAccounts } from '@/features/accounts/api'
@@ -29,7 +35,11 @@ import { useHouseholdContext } from '@/features/auth/api'
 import { useCards, useCreatePurchase, useDeletePurchase } from '@/features/cards/api'
 import { announcePurchase, useInvoicePreview } from '@/features/cards/purchase-helpers'
 import { useCategories, useCreateCategory } from '@/features/categories/api'
-import { useCreateTransaction, useDeleteTransaction } from '@/features/transactions/api'
+import {
+  useCreateRecurringRule,
+  useCreateTransaction,
+  useDeleteTransaction,
+} from '@/features/transactions/api'
 import { cn } from '@/lib/cn'
 import { normalizeSearch } from '@/lib/search-text'
 import { errorMessage } from '@/lib/form-errors'
@@ -46,6 +56,9 @@ const quickAddSchema = z.object({
   /** Card purchases only: the day it happened, and whether it is a credit back. */
   date: isoDateSchema,
   kind: z.enum(['PURCHASE', 'REFUND']),
+  /** Turns this one entry into a rule that keeps producing it. */
+  repeats: z.boolean(),
+  frequency: recurrenceFrequencySchema,
 })
 
 type QuickAddValues = z.input<typeof quickAddSchema>
@@ -90,6 +103,7 @@ export function QuickAddForm({
   const createPurchase = useCreatePurchase()
   const removePurchase = useDeletePurchase()
   const createTransaction = useCreateTransaction()
+  const createRule = useCreateRecurringRule()
   const removeTransaction = useDeleteTransaction()
   const [query, setQuery] = useState('')
   const [installments, setInstallments] = useState(1)
@@ -106,12 +120,23 @@ export function QuickAddForm({
       description: '',
       date: todayIso(),
       kind: 'PURCHASE',
+      repeats: false,
+      frequency: 'MONTHLY',
     },
   })
   const { control, handleSubmit, setValue, reset } = form
-  const [type, amountCents, categoryId, accountId, date, kind] = useWatch({
+  const [type, amountCents, categoryId, accountId, date, kind, repeats, frequency] = useWatch({
     control,
-    name: ['type', 'amountCents', 'categoryId', 'accountId', 'date', 'kind'],
+    name: [
+      'type',
+      'amountCents',
+      'categoryId',
+      'accountId',
+      'date',
+      'kind',
+      'repeats',
+      'frequency',
+    ],
   })
 
   const active = useMemo(
@@ -127,6 +152,7 @@ export function QuickAddForm({
 
   // On a card the money comes from the card, not from a person — ask who used it instead,
   // the same question the "Nova compra" sheet asks.
+  const onCardDestination = Boolean(card)
   const paidByLabel = card ? 'Quem usou o cartão' : type === 'INCOME' ? 'Recebido por' : 'Pago por'
 
   const term = normalizeSearch(query)
@@ -175,13 +201,14 @@ export function QuickAddForm({
 
   const submit = handleSubmit((values) => {
     if (card) {
+      const purchaseDescription =
+        values.description.trim() ||
+        (active.find((c) => c.id === values.categoryId)?.name ?? 'Compra')
       createPurchase.mutate(
         {
           creditCardId: card.id,
           kind: values.kind,
-          description:
-            values.description.trim() ||
-            (active.find((c) => c.id === values.categoryId)?.name ?? 'Compra'),
+          description: purchaseDescription,
           amountCents: values.amountCents ?? 0,
           date: values.date,
           categoryId: values.categoryId,
@@ -194,6 +221,7 @@ export function QuickAddForm({
               const first = result.items[0]
               if (first) removePurchase.mutate({ id: first.id, scope: 'all' })
             })
+            scheduleRepeat(values, purchaseDescription)
             reset({ ...values, amountCents: null, categoryId: '', description: '' })
             setInstallments(1)
             onDone?.()
@@ -220,6 +248,7 @@ export function QuickAddForm({
             description: values.type === 'INCOME' ? 'Receita lançada' : 'Despesa lançada',
             onUndo: () => removeTransaction.mutate({ id: row.id }),
           })
+          scheduleRepeat(values, row.description)
           reset({ ...values, amountCents: null, categoryId: '', description: '' })
           onDone?.()
         },
@@ -227,6 +256,44 @@ export function QuickAddForm({
       },
     )
   })
+
+  // The entry being saved covers today; the rule picks up from the next occurrence, so
+  // nothing is written twice.
+  const entryDate = onCardDestination ? date : todayIso()
+  const nextRepeat = repeats
+    ? nextOccurrence(
+        { startDate: entryDate, frequency, interval: 1, endDate: null },
+        addDays(entryDate, 1),
+      )
+    : null
+
+  /** Saves the rule that keeps this entry coming back. Failing it must not lose the entry. */
+  function scheduleRepeat(values: QuickAddValues, description: string) {
+    if (!values.repeats || !nextRepeat) return
+    createRule.mutate(
+      {
+        type: values.type,
+        description,
+        amountCents: values.amountCents ?? 0,
+        categoryId: values.categoryId || null,
+        accountId: card ? null : values.accountId || null,
+        creditCardId: card?.id ?? null,
+        paidById: values.paidById || null,
+        frequency: values.frequency,
+        interval: 1,
+        startDate: nextRepeat,
+        autoConfirm: false,
+      },
+      {
+        onSuccess: () =>
+          toast(`“${description}” vai se repetir`, {
+            description: `Próxima em ${formatDateBR(nextRepeat)} — veja em Recorrências.`,
+          }),
+        onError: (error) =>
+          toast.error(`Lançamento salvo, mas a recorrência falhou: ${errorMessage(error)}`),
+      },
+    )
+  }
 
   /** Enter saves from the amount and description fields (when everything is filled). */
   function saveOnEnter(event: KeyboardEvent<HTMLInputElement>) {
@@ -517,6 +584,42 @@ export function QuickAddForm({
           ) : null}
         </div>
       </section>
+
+      {kind === 'PURCHASE' ? (
+        <section aria-label="Repetição" className="flex flex-col gap-2">
+          <Controller
+            control={control}
+            name="repeats"
+            render={({ field }) => (
+              <SwitchField checked={field.value} onCheckedChange={field.onChange}>
+                Isto se repete
+              </SwitchField>
+            )}
+          />
+          {repeats ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Com que frequência" htmlFor="qa-frequency">
+                <NativeSelect id="qa-frequency" className="w-44" {...control.register('frequency')}>
+                  {RECURRENCE_FREQUENCIES.map((f) => (
+                    <option key={f} value={f}>
+                      {RECURRENCE_FREQUENCY_LABELS[f]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              {nextRepeat ? (
+                <p className="pb-2 text-xs text-muted-foreground">
+                  Este fica lançado hoje; a próxima cai em{' '}
+                  <strong className="font-medium text-foreground">
+                    {formatDateBR(nextRepeat)}
+                  </strong>
+                  .
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {members.length > 1 ? (
         <Controller
