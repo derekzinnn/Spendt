@@ -101,8 +101,14 @@ projects. `docker compose up -d --build` is the whole deploy:
   `docker exec -i spendt-db pg_restore -U spendly -d spendly --clean --if-exists < FILE`
   (verified on 2026-10-09 against a scratch database: row counts, the sum of `amountCents`
   and text all matched).
-- **The copy is still on the same disk.** That covers a bad migration, a wrong delete or a
-  broken container — not losing the VPS. An off-site copy is the next operations step.
+- **Off-site copy:** `scripts/pull-backups.ps1` runs on the user's Windows machine from a
+  Task Scheduler entry (`scripts/install-backup-task.ps1`, daily 10:00, `StartWhenAvailable`
+  so a day with the machine off is caught up, not skipped). It pulls over the existing
+  `portfolio` SSH host, skips what it already has, writes to `.part` first and keeps 90 days
+  in `~/backups/spendt`, with its own `pull.log`. Verified end-to-end on 2026-10-09.
+- **The gap that is left:** the off-site copy only advances when that machine is on. The VPS
+  copy covers accidents; the Windows copy covers losing the server; neither covers both
+  machines dying in the same week. A cloud destination would.
 
 ### Contract with the infrastructure (for the user's Docker/Caddy setup)
 
