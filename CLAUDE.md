@@ -94,7 +94,15 @@ projects. `docker compose up -d --build` is the whole deploy:
 - The Caddy block lives in the user's `~/infra/Caddyfile`:
   `handle /api/*` → `spendt-api:3333` (keep the prefix — the API mounts at `/api`) and
   `handle` → `spendt-web:80`.
-- **Backups are not automatic yet.** `spendt-db` holds the only copy.
+- **Backups:** `scripts/backup-db.sh` runs from the user's crontab at 03:15 and writes a
+  verified `pg_dump -Fc` to `~/backups/spendt`, keeping 30 days. It renames the file only
+  after `pg_restore --list` can read it, and prunes only after that, so a half-written dump
+  never passes for a good one. Restore:
+  `docker exec -i spendt-db pg_restore -U spendly -d spendly --clean --if-exists < FILE`
+  (verified on 2026-10-09 against a scratch database: row counts, the sum of `amountCents`
+  and text all matched).
+- **The copy is still on the same disk.** That covers a bad migration, a wrong delete or a
+  broken container — not losing the VPS. An off-site copy is the next operations step.
 
 ### Contract with the infrastructure (for the user's Docker/Caddy setup)
 
