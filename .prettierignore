@@ -8,3 +8,6 @@ apps/api/prisma/migrations/**/*.sql
 # Infra files Prettier has no parser for
 Dockerfile
 *.conf
+
+# Shell scripts Prettier has no parser for
+*.sh
