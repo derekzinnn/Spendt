@@ -5,8 +5,10 @@
 # Run from cron on the VPS. Everything it needs comes from the running container, so no
 # password is ever written here or in the crontab.
 #
-#   SPENDT_BACKUP_DIR   where dumps go      (default: ~/backups/spendt)
-#   SPENDT_BACKUP_KEEP  days to keep        (default: 30)
+#   SPENDT_BACKUP_DIR     where dumps go           (default: ~/backups/spendt)
+#   SPENDT_BACKUP_KEEP    days to keep             (default: 30)
+#   SPENDT_RCLONE_REMOTE  rclone remote to mirror to, when configured (default: gdrive)
+#   SPENDT_RCLONE_PATH    folder inside it         (default: Backups/Casa)
 #
 # The dump is pg_dump's custom format (-Fc): compressed, and pg_restore can read a single
 # table out of it. Restore with:
@@ -18,6 +20,8 @@ set -euo pipefail
 DIR="${SPENDT_BACKUP_DIR:-$HOME/backups/spendt}"
 KEEP_DAYS="${SPENDT_BACKUP_KEEP:-30}"
 CONTAINER="${SPENDT_DB_CONTAINER:-spendt-db}"
+REMOTE="${SPENDT_RCLONE_REMOTE:-gdrive}"
+REMOTE_PATH="${SPENDT_RCLONE_PATH:-Backups/Casa}"
 
 mkdir -p "$DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -46,3 +50,17 @@ find "$DIR" -maxdepth 1 -name 'spendt-*.dump' -mtime "+$KEEP_DAYS" -delete
 
 COUNT="$(find "$DIR" -maxdepth 1 -name 'spendt-*.dump' | wc -l | tr -d ' ')"
 echo "backup-db: $TARGET ($SIZE) — $COUNT dumps kept, pruning after $KEEP_DAYS days"
+
+# Off-site mirror. Silently skipped until someone runs `rclone config` and creates the
+# remote, so this script is safe to ship before that happens. A failure here is reported
+# but never fails the run: the local dump is already good.
+if command -v rclone > /dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -qx "$REMOTE:"; then
+  if rclone copy "$TARGET" "$REMOTE:$REMOTE_PATH" --no-traverse 2>&1; then
+    rclone delete "$REMOTE:$REMOTE_PATH" --min-age "${KEEP_DAYS}d" --include 'spendt-*.dump' 2>&1 || true
+    echo "backup-db: mirrored to $REMOTE:$REMOTE_PATH"
+  else
+    echo "backup-db: the local dump is fine, but the upload to $REMOTE failed" >&2
+  fi
+else
+  echo "backup-db: no '$REMOTE' rclone remote yet — the copy stays on this disk only"
+fi
