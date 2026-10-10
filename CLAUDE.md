@@ -106,9 +106,19 @@ projects. `docker compose up -d --build` is the whole deploy:
   so a day with the machine off is caught up, not skipped). It pulls over the existing
   `portfolio` SSH host, skips what it already has, writes to `.part` first and keeps 90 days
   in `~/backups/spendt`, with its own `pull.log`. Verified end-to-end on 2026-10-09.
-- **The gap that is left:** the off-site copy only advances when that machine is on. The VPS
-  copy covers accidents; the Windows copy covers losing the server; neither covers both
-  machines dying in the same week. A cloud destination would.
+- **Cloud copy:** the same script mirrors each verified dump to Backblaze B2
+  (`b2:spendt-derek/dumps`, `hard_delete = true` so a prune really frees the space) and
+  prunes the same 30 days there. The upload is skipped with a log line when no `b2` remote
+  is configured, and a failed upload never fails the run — the local dump is already good.
+  Verified on 2026-10-10 end to end: uploaded, `rclone check` byte-identical, **downloaded
+  from B2 and restored into a scratch database** with matching row counts and sum of
+  `amountCents`, and the prune filter confirmed with a dry run.
+- **Why B2 and not Google Drive:** Google is retiring rclone's shared client_id during 2026,
+  and a personal OAuth app left in "Testing" expires its refresh token every 7 days — a
+  backup that stops silently is worse than no backup. B2 uses an API key: no browser, no
+  token to expire. The key is scoped to that one bucket, read/write.
+- **Three copies now:** the VPS disk covers accidents, the Windows machine covers losing the
+  server, B2 covers losing both. Only the Windows one depends on a machine being on.
 
 ### Contract with the infrastructure (for the user's Docker/Caddy setup)
 
