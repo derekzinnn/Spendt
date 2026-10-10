@@ -8,7 +8,7 @@
 #   SPENDT_BACKUP_DIR     where dumps go           (default: ~/backups/spendt)
 #   SPENDT_BACKUP_KEEP    days to keep             (default: 30)
 #   SPENDT_RCLONE_REMOTE  rclone remote to mirror to, when configured (default: b2)
-#   SPENDT_RCLONE_PATH    bucket/folder inside it  (default: casa-backup/spendt)
+#   SPENDT_RCLONE_PATH    bucket/folder inside it  (default: spendt-derek/dumps)
 #
 # The dump is pg_dump's custom format (-Fc): compressed, and pg_restore can read a single
 # table out of it. Restore with:
@@ -22,7 +22,7 @@ KEEP_DAYS="${SPENDT_BACKUP_KEEP:-30}"
 CONTAINER="${SPENDT_DB_CONTAINER:-spendt-db}"
 REMOTE="${SPENDT_RCLONE_REMOTE:-b2}"
 # For B2 this is "bucket/folder"; the bucket name is global, so it may differ.
-REMOTE_PATH="${SPENDT_RCLONE_PATH:-casa-backup/spendt}"
+REMOTE_PATH="${SPENDT_RCLONE_PATH:-spendt-derek/dumps}"
 
 mkdir -p "$DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
